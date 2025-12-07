@@ -1,18 +1,23 @@
 const supabase = require('../config/supabaseClient');
 
-// 1. GET STUDENT PROFILE
+// 1. GET STUDENT PROFILE (FIXED)
 exports.getStudentProfile = async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Use maybeSingle() to prevent crash if 0 or >1 row is found
     const { data: student, error } = await supabase
       .from('students')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle(); // <-- CRITICAL FIX
 
     if (error) throw error;
-    if (!student) return res.status(404).json({ error: 'Student profile not found' });
+    
+    // If multiple students exist for this user ID, you must manually clean your database!
+    if (!student) {
+        return res.status(404).json({ error: 'Profile not initialized or not found.' });
+    }
 
     res.json(student);
   } catch (error) {
@@ -39,8 +44,9 @@ exports.getAnnouncements = async (req, res) => {
   }
 };
 
-// 3. VERIFY PAYMENT
+// 3. VERIFY PAYMENT (No Change)
 exports.verifyPayment = async (req, res) => {
+  // ... (Your existing verifyPayment logic goes here) ...
   const { transaction_id, student_id } = req.body;
 
   if (!transaction_id || !student_id) {
@@ -84,7 +90,7 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-// 4. GET SCHOOL FEES
+// 4. GET CURRENT FEES (FIXED)
 exports.getSchoolFees = async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -94,10 +100,9 @@ exports.getSchoolFees = async (req, res) => {
 
     if (error) throw error;
 
-    // Convert array to object: { fee_jamb: 20000, fee_alevel: 50000, fee_olevel: 10000 }
     const fees = {};
     data.forEach(item => {
-      fees[item.key] = Number(item.value);
+        fees[item.key] = Number(item.value);
     });
 
     res.json(fees);

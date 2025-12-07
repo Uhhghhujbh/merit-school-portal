@@ -10,7 +10,10 @@ router.post('/register', authController.registerStudent);
 router.get('/profile/:id', studentController.getStudentProfile);
 router.get('/announcements', studentController.getAnnouncements);
 
-// Payment Verification (Make sure this line exists!)
+// Payment Verification
 router.post('/verify-payment', studentController.verifyPayment);
+
+// NEW FEES ROUTE (Fixes 404)
+router.get('/fees', studentController.getSchoolFees);
 
 module.exports = router;

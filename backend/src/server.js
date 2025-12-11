@@ -15,6 +15,7 @@ const staffRoutes = require('./routes/staffRoutes');
 const parentRoutes = require('./routes/parentRoutes');
 const libraryRoutes = require('./routes/libraryRoutes');
 const resultRoutes = require('./routes/resultRoutes'); 
+const activityLogRoutes = require('./routes/activityLogRoutes');
 
 const app = express();
 
@@ -49,7 +50,8 @@ app.use('/api/students', studentRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/parents', parentRoutes);
 app.use('/api/library', libraryRoutes);
-app.use('/api/results', resultRoutes); // NEW: Added results routes
+app.use('/api/results', resultRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 
 // --- Global Error Handling ---
 app.use((err, req, res, next) => {

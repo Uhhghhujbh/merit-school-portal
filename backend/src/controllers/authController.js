@@ -61,8 +61,19 @@ exports.registerStudent = async (req, res) => {
     programme, department, subjects, photoPreview 
   } = req.body;
 
-  try {
-    const fullName = `${surname} ${middleName} ${lastName}`.trim();
+try {
+  await supabase.from('activity_logs').insert([{
+    student_id: userId,
+    student_name: `${surname} ${first_name}`,
+    student_id_text: studentIdText,
+    action: 'registered',
+    ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+    device_info: req.headers['user-agent'] || 'unknown'
+  }]);
+} catch (logError) {
+  console.error('Failed to log activity:', logError);
+  // Don't fail registration if logging fails
+}
 
     // 2. Create Login
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({

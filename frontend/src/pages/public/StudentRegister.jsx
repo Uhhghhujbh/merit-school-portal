@@ -5,7 +5,7 @@ import html2canvas from 'html2canvas';
 import { 
   Upload, X, AlertCircle, CheckCircle, MapPin, 
   User, Book, FileText, Save, Eye, EyeOff, ChevronRight, ChevronLeft, 
-  Loader2, Printer, Download, Share2
+  Loader2, Printer, Download, Share2, AlertTriangle
 } from 'lucide-react';
 import { api } from '../../lib/api';
 
@@ -118,8 +118,8 @@ const StudentRegister = () => {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 180 * 1024) { 
-      setErrors(prev => ({ ...prev, photo: 'Image is too large (Max 2MB)' }));
+    if (file.size > 200 * 1024) { 
+      setErrors(prev => ({ ...prev, photo: 'Image is too large (Max 200KB)' }));
       return;
     }
     const reader = new FileReader();
@@ -170,6 +170,8 @@ const StudentRegister = () => {
       if (!formData.email) newErrors.email = "Email is Required";
       if (!formData.studentPhone) newErrors.studentPhone = "Phone Number is Required";
       if (!formData.photoPreview) newErrors.photo = "Passport photo required";
+      if (!formData.lga) newErrors.lga = "LGA is Required";
+      if (!formData.stateOfOrigin) newErrors.stateOfOrigin = "State of Origin is Required";
       
       if (!formData.password) newErrors.password = "Create a password";
       if (formData.password.length < 6) newErrors.password = "Min 6 characters";
@@ -257,7 +259,7 @@ const StudentRegister = () => {
                 ) : (
                   <div className="text-center cursor-pointer" onClick={() => fileInputRef.current.click()}>
                     <div className="w-16 h-16 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center mx-auto mb-3"><Upload size={24} /></div>
-                    <p className="text-sm font-bold text-primary-900">Upload Passport</p>
+                    <p className="text-sm font-bold text-primary-900">Upload Passport (Max 200KB)</p>
                   </div>
                 )}
                 <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
@@ -288,9 +290,10 @@ const StudentRegister = () => {
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
                  <InputField label="Date of Birth" type="date" value={formData.dateOfBirth} onChange={v => setFormData({...formData, dateOfBirth: v})} />
-                 <InputField label="State of Origin" value={formData.stateOfOrigin} onChange={v => setFormData({...formData, stateOfOrigin: v})} />
+                 <InputField label="State of Origin" value={formData.stateOfOrigin} onChange={v => setFormData({...formData, stateOfOrigin: v})} error={errors.stateOfOrigin} />
+                 <InputField label="L.G.A" value={formData.lga} onChange={v => setFormData({...formData, lga: v})} error={errors.lga} />
               </div>
               <InputField label="Address" value={formData.permanentAddress} onChange={v => setFormData({...formData, permanentAddress: v})} />
             </div>
@@ -357,11 +360,33 @@ const StudentRegister = () => {
 
           {currentStep === 3 && (
             <div className="space-y-6 animate-fadeIn">
+              <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded shadow-sm">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="text-amber-600 shrink-0" size={24}/>
+                  <div>
+                    <h3 className="font-bold text-amber-900">MANDATORY ACTION</h3>
+                    <p className="text-amber-800 text-sm mt-1">
+                      You <strong>MUST</strong> Download or Print this form <strong>BEFORE</strong> submitting. 
+                      This printed slip is required for your physical verification at the college.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 h-64 overflow-y-auto text-sm text-slate-600 shadow-inner">
                 <h3 className="font-bold text-slate-900 mb-4 sticky top-0 bg-slate-50 pb-2 border-b border-slate-200">Terms & Conditions</h3>
-                <p className="mb-2">1. All fees are non-refundable.</p>
-                <p className="mb-2">2. Zero tolerance for examination malpractice.</p>
-                <p>3. Admission is provisional until payment is confirmed.</p>
+                <ol className="list-decimal ml-4 space-y-2">
+                  <li>All payments made to the institution are <strong>NON-REFUNDABLE</strong> under any circumstance.</li>
+                  <li>The College maintains a <strong>ZERO TOLERANCE</strong> policy for examination malpractice. Any student caught will be expelled immediately.</li>
+                  <li>Admission is strictly provisional until all payments are confirmed and original credentials are verified.</li>
+                  <li>Students must maintain at least <strong>75% attendance</strong> in lectures to be eligible for final examinations.</li>
+                  <li>Indecent dressing is strictly prohibited within the College premises. The College dress code must be adhered to at all times.</li>
+                  <li>Students must wear their ID cards at all times while on campus for security identification.</li>
+                  <li>Involvement in cultism, violence, or any form of hooliganism will lead to immediate expulsion and police prosecution.</li>
+                  <li>Students will be held liable for any damage to College property caused by their negligence or misconduct.</li>
+                  <li>Submission of false or forged documents will result in the immediate withdrawal of admission.</li>
+                  <li>Students must strictly adhere to the College Academic Calendar and resumption dates.</li>
+                </ol>
               </div>
 
               <div className="flex items-start gap-3 p-4 bg-primary-50 rounded-lg border border-primary-100">
@@ -373,14 +398,15 @@ const StudentRegister = () => {
               {errors.terms && <p className="text-red-500 text-xs font-medium">{errors.terms}</p>}
 
               <div className="pt-4 border-t border-slate-100">
-                <InputField label="Digital Signature (Type Name)" value={formData.signature} onChange={v => setFormData({...formData, signature: v})} error={errors.signature} placeholder="e.g. John Doe" />
+                <InputField label="Digital Signature (Type Full Name)" value={formData.signature} onChange={v => setFormData({...formData, signature: v})} error={errors.signature} placeholder="e.g. John Doe" />
+                <p className="text-xs text-slate-500 mt-1">Typing your name here serves as your legal signature accepting all terms.</p>
               </div>
 
               <button 
                 onClick={() => setShowPreview(true)} 
                 className="w-full btn-secondary flex items-center justify-center gap-2"
               >
-                <Eye size={18} /> Preview Form
+                <Eye size={18} /> Preview Form (Required)
               </button>
             </div>
           )}
@@ -395,7 +421,7 @@ const StudentRegister = () => {
       {showPreview && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center z-10">
               <h2 className="text-xl font-bold text-slate-900">Form Preview</h2>
               <div className="flex gap-2">
                 <button onClick={handlePrint} className="hidden md:flex btn-primary items-center gap-2">
@@ -466,15 +492,15 @@ const FormPreview = ({ formData }) => (
             <span className="flex-1">{formData.lga || '_______'}</span>
           </div>
           <div className="flex border-b border-slate-300 pb-1">
-            <span className="font-semibold w-32">Permanent Home Address:</span>
+            <span className="font-semibold w-32">Permanent Address:</span>
             <span className="flex-1">{formData.permanentAddress || '_______'}</span>
           </div>
           <div className="flex border-b border-slate-300 pb-1">
-            <span className="font-semibold w-32">Parents Phone Number:</span>
+            <span className="font-semibold w-32">Parents Phone:</span>
             <span className="flex-1">{formData.parentsPhone || '_______'}</span>
           </div>
           <div className="flex border-b border-slate-300 pb-1">
-            <span className="font-semibold w-32">Student phone number:</span>
+            <span className="font-semibold w-32">Student Phone:</span>
             <span className="flex-1">{formData.studentPhone}</span>
           </div>
         </div>
@@ -482,7 +508,7 @@ const FormPreview = ({ formData }) => (
     </div>
 
     <div className="mb-6">
-      <h3 className="font-bold text-base mb-3 underline">(C) PREFERRED SUBJECT ALL THE PROGRAMS (UTME, JAMB, A-LEVELS, O-LEVEL)</h3>
+      <h3 className="font-bold text-base mb-3 underline">(C) PREFERRED SUBJECTS</h3>
       <div className="space-y-2">
         <div className="flex border-b border-slate-300 pb-1">
           <span className="font-semibold w-32">Programme:</span>
@@ -496,12 +522,12 @@ const FormPreview = ({ formData }) => (
     </div>
 
     <div className="mb-6">
-      <h3 className="font-bold text-base mb-3">AVAILABLE SUBJECTS</h3>
-      <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+      <h3 className="font-bold text-base mb-3">SELECTED SUBJECTS</h3>
+      <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
         {formData.subjects.map((subject, idx) => (
           <div key={idx} className="flex items-center gap-2">
-            <div className="w-5 h-5 border-2 border-slate-800 flex items-center justify-center">
-              <CheckCircle size={16} className="text-slate-800" />
+            <div className="w-4 h-4 border-2 border-slate-800 flex items-center justify-center">
+              <CheckCircle size={12} className="text-slate-800" />
             </div>
             <span>{subject}</span>
           </div>
@@ -526,19 +552,25 @@ const FormPreview = ({ formData }) => (
     )}
 
     <div className="mb-6">
-      <h3 className="font-bold text-base mb-3 underline">(D) ATTESTATION</h3>
-      <p className="text-xs mb-4">I _________________________________ Confirmed</p>
-      <p className="text-xs mb-4">That all details supplied above are correct and shall be liable to any changes after submission</p>
+      <h3 className="font-bold text-base mb-3 underline">(E) ATTESTATION</h3>
+      <p className="text-sm mb-4 leading-relaxed">
+        I, <strong>{formData.surname} {formData.middleName} {formData.lastName}</strong>, confirmed
+        that all details supplied above are correct and shall be liable to any changes after submission.
+      </p>
     </div>
 
-    <div className="flex justify-between items-end mt-12">
+    <div className="flex justify-between items-end mt-16 pt-4">
       <div>
-        <p className="text-sm mb-2">Student Signature:</p>
-        <p className="font-bold text-lg border-b-2 border-slate-800 pb-1 min-w-[200px]">{formData.signature}</p>
+        <p className="text-xs mb-1 uppercase font-bold text-slate-500">Applicant Signature:</p>
+        <div className="font-script text-2xl text-blue-900 border-b-2 border-slate-800 pb-1 min-w-[200px]" style={{fontFamily: 'cursive'}}>
+          {formData.signature}
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1">{new Date().toLocaleDateString()}</p>
       </div>
       <div className="text-right">
-        <p className="text-sm mb-2">Coordinators Signature & Date</p>
+        <p className="text-xs mb-8 uppercase font-bold text-slate-500">Registrar / Coordinator:</p>
         <div className="border-b-2 border-slate-800 pb-1 min-w-[200px]"></div>
+        <p className="text-[10px] text-slate-400 mt-1">Official Stamp & Date</p>
       </div>
     </div>
   </div>

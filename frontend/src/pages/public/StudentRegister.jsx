@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
+import html2canvas from 'html2canvas';
 import { 
   Upload, X, AlertCircle, CheckCircle, MapPin, 
-  User, Book, FileText, Save, Eye, EyeOff, ChevronRight, ChevronLeft, Loader2, Printer
+  User, Book, FileText, Save, Eye, EyeOff, ChevronRight, ChevronLeft, 
+  Loader2, Printer, Download, Share2
 } from 'lucide-react';
 import { api } from '../../lib/api';
 
@@ -16,7 +18,6 @@ const StudentRegister = () => {
   const fileInputRef = useRef(null);
   const printRef = useRef(null);
 
-  // Form State
   const [formData, setFormData] = useState({
     surname: '', middleName: '', lastName: '',
     gender: '', dateOfBirth: '',
@@ -35,7 +36,6 @@ const StudentRegister = () => {
 
   const [errors, setErrors] = useState({});
 
-  // Capture Location
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -48,13 +48,73 @@ const StudentRegister = () => {
     }
   }, []);
 
-  // Print Handler - FIXED
+  // Desktop Print (PDF)
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `${formData.surname}_${formData.lastName}_Registration_Form`,
+    pageStyle: `
+      @page {
+        size: A4;
+        margin: 15mm;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+      }
+    `
   });
 
-  // Image Upload Handler
+  // Mobile Download as Image
+  const handleDownloadImage = async () => {
+    try {
+      const element = printRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      
+      const link = document.createElement('a');
+      link.download = `Registration_${formData.surname}_${formData.lastName}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      alert('Failed to download. Please try print instead.');
+    }
+  };
+
+  // Mobile Share
+  const handleShare = async () => {
+    try {
+      const element = printRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], `Registration_${formData.surname}.png`, { type: 'image/png' });
+        
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'Student Registration Form',
+            text: 'Merit College Registration'
+          });
+        } else {
+          alert('Share not supported on this device. Use Download instead.');
+        }
+      });
+    } catch (err) {
+      alert('Failed to share. Please try download instead.');
+    }
+  };
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -70,7 +130,6 @@ const StudentRegister = () => {
     reader.readAsDataURL(file);
   };
 
-  // Subject Pools by Department and Programme
   const getSubjectsByDepartment = () => {
     const isALevel = formData.programme === 'A-Level';
     
@@ -91,7 +150,6 @@ const StudentRegister = () => {
     return subjects[formData.department] || [];
   };
 
-  // Subject Toggle Handler
   const handleSubjectToggle = (subject) => {
     const max = formData.programme === 'O-Level' ? 9 : 
                 formData.programme === 'JAMB' ? 4 : 3;
@@ -104,7 +162,6 @@ const StudentRegister = () => {
     });
   };
 
-  // Validation
   const validateStep = (step) => {
     const newErrors = {};
     if (step === 1) {
@@ -120,7 +177,7 @@ const StudentRegister = () => {
     }
     if (step === 2) {
       if (!formData.programme) newErrors.programme = "Select a programme";
-      if (!formData.department) newErrors.department = "Select a department"; // NEW VALIDATION
+      if (!formData.department) newErrors.department = "Select a department";
       const max = formData.programme === 'O-Level' ? 9 : formData.programme === 'JAMB' ? 4 : 3;
       if (formData.subjects.length !== max) newErrors.subjects = `Select exactly ${max} subjects`;
       if (formData.programme === 'A-Level' && !formData.university) newErrors.university = "Required for A-Level";
@@ -164,7 +221,6 @@ const StudentRegister = () => {
     <div className="min-h-screen bg-slate-50 py-10 px-4 font-sans">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-soft overflow-hidden">
         
-        {/* Header */}
         <div className="bg-primary-900 px-8 py-6 text-white flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">Student Registration</h1>
@@ -176,7 +232,6 @@ const StudentRegister = () => {
           </div>
         </div>
 
-        {/* Progress */}
         <div className="flex border-b border-slate-100">
           {[1, 2, 3].map(step => (
             <div key={step} className={`flex-1 py-4 text-center text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
@@ -191,10 +246,8 @@ const StudentRegister = () => {
         </div>
 
         <div className="p-8">
-          {/* STEP 1: PERSONAL */}
           {currentStep === 1 && (
             <div className="space-y-6 animate-fadeIn">
-              {/* Photo */}
               <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
                 {formData.photoPreview ? (
                   <div className="relative group">
@@ -211,7 +264,6 @@ const StudentRegister = () => {
                 {errors.photo && <p className="text-red-500 text-xs mt-2 font-medium">{errors.photo}</p>}
               </div>
 
-              {/* Personal Fields */}
               <div className="grid md:grid-cols-3 gap-4">
                 <InputField label="Surname" value={formData.surname} onChange={v => setFormData({...formData, surname: v})} error={errors.surname} />
                 <InputField label="First Name" value={formData.middleName} onChange={v => setFormData({...formData, middleName: v})} />
@@ -223,7 +275,6 @@ const StudentRegister = () => {
                 <InputField label="Phone Number" type="tel" value={formData.studentPhone} onChange={v => setFormData({...formData, studentPhone: v})} error={errors.studentPhone} placeholder="+234..." />
               </div>
 
-              {/* Password Section */}
               <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                 <h3 className="font-bold text-blue-900 mb-3 text-sm flex items-center gap-2"><User size={16}/> Account Security</h3>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -245,10 +296,8 @@ const StudentRegister = () => {
             </div>
           )}
 
-          {/* STEP 2: ACADEMIC */}
           {currentStep === 2 && (
             <div className="space-y-6 animate-fadeIn">
-              {/* Programme Selection */}
               <div>
                 <label className="label-text">Select Programme</label>
                 <div className="grid grid-cols-3 gap-4">
@@ -262,7 +311,6 @@ const StudentRegister = () => {
                 {errors.programme && <p className="text-red-500 text-xs mt-2 font-medium">{errors.programme}</p>}
               </div>
 
-              {/* Department Selection - NEW */}
               {formData.programme && (
                 <div>
                   <label className="label-text">Select Department</label>
@@ -280,7 +328,6 @@ const StudentRegister = () => {
                 </div>
               )}
 
-              {/* A-Level Details */}
               {formData.programme === 'A-Level' && formData.department && (
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                     <h3 className="font-bold text-blue-900 mb-3 text-sm">A-Level Details</h3>
@@ -291,7 +338,6 @@ const StudentRegister = () => {
                 </div>
               )}
 
-              {/* Subject Selection - Only shows after department is selected */}
               {formData.programme && formData.department && (
                 <div>
                    <label className="label-text mb-3 block">Select Subjects ({formData.subjects.length} Selected)</label>
@@ -309,7 +355,6 @@ const StudentRegister = () => {
             </div>
           )}
 
-          {/* STEP 3: AGREEMENT & PREVIEW */}
           {currentStep === 3 && (
             <div className="space-y-6 animate-fadeIn">
               <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 h-64 overflow-y-auto text-sm text-slate-600 shadow-inner">
@@ -331,7 +376,6 @@ const StudentRegister = () => {
                 <InputField label="Digital Signature (Type Name)" value={formData.signature} onChange={v => setFormData({...formData, signature: v})} error={errors.signature} placeholder="e.g. John Doe" />
               </div>
 
-              {/* Preview Button */}
               <button 
                 onClick={() => setShowPreview(true)} 
                 className="w-full btn-secondary flex items-center justify-center gap-2"
@@ -341,7 +385,6 @@ const StudentRegister = () => {
             </div>
           )}
 
-          {/* Navigation */}
           <div className="flex justify-between mt-8 pt-6 border-t border-slate-100">
             {currentStep > 1 ? <button onClick={() => setCurrentStep(p => p - 1)} className="btn-secondary"><ChevronLeft size={16} /> Previous</button> : <button onClick={() => navigate('/')} className="text-slate-500 font-medium hover:text-slate-800 px-4">Cancel</button>}
             {currentStep < 3 ? <button onClick={handleNext} className="btn-primary">Next Step <ChevronRight size={16} /></button> : <button onClick={handleSubmit} disabled={loading} className="btn-accent min-w-[180px]">{loading ? <Loader2 className="animate-spin" /> : 'Submit Application'}</button>}
@@ -349,15 +392,20 @@ const StudentRegister = () => {
         </div>
       </div>
 
-      {/* PREVIEW MODAL */}
       {showPreview && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
               <h2 className="text-xl font-bold text-slate-900">Form Preview</h2>
               <div className="flex gap-2">
-                <button onClick={handlePrint} className="btn-primary flex items-center gap-2">
-                  <Printer size={18} /> Print
+                <button onClick={handlePrint} className="hidden md:flex btn-primary items-center gap-2">
+                  <Printer size={18} /> Print PDF
+                </button>
+                <button onClick={handleDownloadImage} className="btn-primary flex items-center gap-2">
+                  <Download size={18} /> Download
+                </button>
+                <button onClick={handleShare} className="md:hidden btn-secondary flex items-center gap-2">
+                  <Share2 size={18} /> Share
                 </button>
                 <button onClick={() => setShowPreview(false)} className="btn-secondary">
                   <X size={18} />
@@ -365,7 +413,6 @@ const StudentRegister = () => {
               </div>
             </div>
 
-            {/* Printable Form */}
             <div ref={printRef} className="p-8">
               <FormPreview formData={formData} />
             </div>
@@ -376,10 +423,8 @@ const StudentRegister = () => {
   );
 };
 
-// Form Preview Component
 const FormPreview = ({ formData }) => (
   <div className="bg-white p-8 font-sans text-sm">
-    {/* Header */}
     <div className="flex items-start justify-between mb-6 border-b-2 border-slate-800 pb-4">
       <img src="/meritlogo.jpg" alt="Merit College" className="w-20 h-20 object-contain" />
       <div className="text-center flex-1">
@@ -392,18 +437,15 @@ const FormPreview = ({ formData }) => (
 
     <h2 className="text-center font-bold text-lg mb-6 underline">EXAMINATION ENTRY DETAILS</h2>
 
-    {/* Personal Details */}
     <div className="mb-6">
       <h3 className="font-bold text-base mb-3 underline">(A) PERSONAL DETAILS</h3>
       <div className="flex gap-6">
-        {/* Photo */}
         {formData.photoPreview && (
           <div className="flex-shrink-0">
             <img src={formData.photoPreview} alt="Student" className="w-32 h-32 object-cover border-2 border-slate-800" />
           </div>
         )}
         
-        {/* Details */}
         <div className="flex-1 space-y-2">
           <div className="flex border-b border-slate-300 pb-1">
             <span className="font-semibold w-32">Name:</span>
@@ -439,7 +481,6 @@ const FormPreview = ({ formData }) => (
       </div>
     </div>
 
-    {/* Programme & Department */}
     <div className="mb-6">
       <h3 className="font-bold text-base mb-3 underline">(C) PREFERRED SUBJECT ALL THE PROGRAMS (UTME, JAMB, A-LEVELS, O-LEVEL)</h3>
       <div className="space-y-2">
@@ -454,7 +495,6 @@ const FormPreview = ({ formData }) => (
       </div>
     </div>
 
-    {/* Subjects */}
     <div className="mb-6">
       <h3 className="font-bold text-base mb-3">AVAILABLE SUBJECTS</h3>
       <div className="grid grid-cols-2 gap-x-8 gap-y-2">
@@ -469,7 +509,6 @@ const FormPreview = ({ formData }) => (
       </div>
     </div>
 
-    {/* A-Level Details */}
     {formData.programme === 'A-Level' && (
       <div className="mb-6">
         <h3 className="font-bold text-base mb-3 underline">(D) CHOICE OF INSTITUTION</h3>
@@ -486,14 +525,12 @@ const FormPreview = ({ formData }) => (
       </div>
     )}
 
-    {/* Attestation */}
     <div className="mb-6">
       <h3 className="font-bold text-base mb-3 underline">(D) ATTESTATION</h3>
       <p className="text-xs mb-4">I _________________________________ Confirmed</p>
       <p className="text-xs mb-4">That all details supplied above are correct and shall be liable to any changes after submission</p>
     </div>
 
-    {/* Signature */}
     <div className="flex justify-between items-end mt-12">
       <div>
         <p className="text-sm mb-2">Student Signature:</p>
@@ -507,7 +544,6 @@ const FormPreview = ({ formData }) => (
   </div>
 );
 
-// Input Field Component
 const InputField = ({ label, value, onChange, type="text", error, placeholder }) => (
   <div className="w-full">
     <label className="label-text">{label}</label>

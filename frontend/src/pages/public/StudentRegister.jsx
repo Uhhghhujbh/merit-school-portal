@@ -118,7 +118,7 @@ const StudentRegister = () => {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2000 * 1024) { 
+    if (file.size > 180 * 1024) { 
       setErrors(prev => ({ ...prev, photo: 'Image is too large (Max 2MB)' }));
       return;
     }

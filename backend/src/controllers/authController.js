@@ -1,14 +1,49 @@
 const supabase = require('../config/supabaseClient');
 
+// HELPER: Upload Base64 to Supabase Storage
+async function uploadPhoto(base64Data, userId) {
+  if (!base64Data) return null;
+  try {
+    // Remove header "data:image/jpeg;base64,"
+    const base64File = base64Data.split(';base64,').pop();
+    const buffer = Buffer.from(base64File, 'base64');
+    const path = `students/${userId}_${Date.now()}.jpg`;
+
+    const { data, error } = await supabase.storage
+      .from('photos') // Make sure you created this bucket in Supabase!
+      .upload(path, buffer, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (error) throw error;
+
+    // Get Public URL
+    const { data: urlData } = supabase.storage
+      .from('photos')
+      .getPublicUrl(path);
+      
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error("Photo Upload Error:", err.message);
+    return null; // Continue registration even if photo fails
+  }
+}
+
 // LOGIN
 exports.studentLogin = async (req, res) => {
   const { identifier, password } = req.body;
   try {
     let email = identifier;
 
-    // 1. Resolve Student ID to Email
+    // 1. Resolve Student ID to Email (Case Insensitive)
     if (!identifier.includes('@')) {
-      const { data } = await supabase.from('students').select('email').eq('student_id_text', identifier).single();
+      const { data } = await supabase
+        .from('students')
+        .select('email')
+        .ilike('student_id_text', identifier.trim()) // Use ilike for case-insensitivity
+        .maybeSingle();
+        
       if (!data) return res.status(404).json({ error: 'Student ID not found' });
       email = data.email;
     }
@@ -17,28 +52,19 @@ exports.studentLogin = async (req, res) => {
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
     if (authError) return res.status(401).json({ error: 'Invalid Password' });
 
-    console.log("✅ Auth Success. User ID:", authData.user.id);
-
-    // 3. Get Profile (WITH ERROR LOGGING)
+    // 3. Get Profile
     const { data: profile, error: dbError } = await supabase
       .from('students')
       .select('*')
       .eq('id', authData.user.id)
-      .single();
+      .maybeSingle();
     
-    if (dbError) {
-        console.error("❌ DATABASE ERROR:", dbError);
-        return res.status(500).json({ error: "DB Error: " + dbError.message });
-    }
+    if (dbError) throw dbError;
+    if (!profile) return res.status(500).json({ error: 'Profile row missing. Contact Admin.' });
 
-    if (!profile) {
-        console.error("❌ Profile is NULL. ID searched:", authData.user.id);
-        return res.status(500).json({ error: 'Profile row is missing in table.' });
-    }
-
-    // Manual fetch of full name since we removed the join above
+    // Fetch Full Name from Profiles table
     const { data: profileName } = await supabase.from('profiles').select('full_name').eq('id', authData.user.id).single();
-    profile.profiles = profileName;
+    if(profileName) profile.full_name = profileName.full_name;
 
     res.json({
       message: 'Login successful',
@@ -46,36 +72,25 @@ exports.studentLogin = async (req, res) => {
       user: profile
     });
   } catch (error) {
-    console.error("❌ SERVER ERROR:", error);
+    console.error("Login Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
 // REGISTRATION
 exports.registerStudent = async (req, res) => {
-  // 1. Clean Inputs
   const clean = (val) => (val && val.trim() !== "" ? val : null);
 
   const { 
     email, password, surname, middleName, lastName, 
-    programme, department, subjects, photoPreview 
+    programme, department, subjects, photoPreview,
+    dateOfBirth, gender, stateOfOrigin, lga, permanentAddress,
+    parentsPhone, studentPhone, university, course
   } = req.body;
 
-try {
-  await supabase.from('activity_logs').insert([{
-    student_id: userId,
-    student_name: `${surname} ${first_name}`,
-    student_id_text: studentIdText,
-    action: 'registered',
-    ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
-    device_info: req.headers['user-agent'] || 'unknown'
-  }]);
-} catch (logError) {
-  console.error('Failed to log activity:', logError);
-  // Don't fail registration if logging fails
-}
-
-    // 2. Create Login
+  try {
+    // 1. Create Auth User
+    const fullName = `${surname} ${middleName} ${lastName}`.trim();
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password: password || 'password123',
@@ -86,56 +101,78 @@ try {
     if (authError) throw authError;
     const userId = authData.user.id;
 
-    // 3. Generate Student ID based on Department
+    // 2. Generate Alphanumeric Student ID
     const year = new Date().getFullYear().toString().slice(-2);
-    const rand = Math.floor(100 + Math.random() * 900);
+    // Generate 4 random alphanumeric chars (e.g., A9X2)
+    const randAlpha = Math.random().toString(36).substring(2, 6).toUpperCase();
     
-    // Map Department to Code
-    const deptMap = { 
-      'Science': 'SCI', 
-      'Art': 'ART', 
-      'Commercial': 'BUS' 
-    };
+    const deptMap = { 'Science': 'SCI', 'Art': 'ART', 'Commercial': 'BUS' };
     const deptCode = deptMap[department] || 'GEN';
     
-    const studentIdText = `MCAS/${deptCode}/${year}/${rand}`; 
+    const studentIdText = `MCAS/${deptCode}/${year}/${randAlpha}`; 
 
-    // 4. UPDATE the profile
+    // 3. Upload Photo (Fixes Database Crash)
+    const photoUrl = await uploadPhoto(photoPreview, userId);
+
+    // 4. Create Profile & Student Entries
+    // (Note: We use upsert to be safe, but Auth trigger is gone so insert is also fine)
+    await supabase.from('profiles').upsert({
+        id: userId,
+        email,
+        role: 'student',
+        full_name: fullName
+    });
+
     const { error: updateError } = await supabase
       .from('students')
-      .update({
+      .upsert({
+        id: userId,
+        email,
         student_id_text: studentIdText,
-        department: clean(department), // SAVE THE DEPARTMENT
+        department: clean(department),
         surname: clean(surname),
         first_name: clean(middleName),
         last_name: clean(lastName),
-        gender: clean(req.body.gender),
-        dob: clean(req.body.dateOfBirth),
-        state_of_origin: clean(req.body.stateOfOrigin),
-        lga: clean(req.body.lga),
-        address: clean(req.body.permanentAddress),
-        parents_phone: clean(req.body.parentsPhone),
-        phone_number: clean(req.body.studentPhone),
+        gender: clean(gender),
+        dob: clean(dateOfBirth),
+        state_of_origin: clean(stateOfOrigin),
+        lga: clean(lga),
+        address: clean(permanentAddress),
+        parents_phone: clean(parentsPhone),
+        phone_number: clean(studentPhone),
         program_type: programme,
         subjects: subjects,
-        university_choice: clean(req.body.university),
-        course_choice: clean(req.body.course),
-        photo_url: photoPreview
-      })
-      .eq('id', userId);
+        university_choice: clean(university),
+        course_choice: clean(course),
+        photo_url: photoUrl, // Saving URL, not Base64!
+        is_validated: false,
+        payment_status: 'unpaid'
+      });
 
-    if (updateError) {
-       console.error("Profile Update Failed:", updateError);
-       return res.status(201).json({ 
-         message: 'Account Created but Profile incomplete. Please Login to finish.', 
-         studentId: 'PENDING' 
-       });
+    if (updateError) throw updateError;
+
+    // 5. Log Activity (Last step, safe from crashing flow)
+    try {
+      await supabase.from('activity_logs').insert([{
+        student_id: userId,
+        student_name: fullName,
+        student_id_text: studentIdText,
+        action: 'registered',
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        device_info: req.headers['user-agent'] || 'unknown'
+      }]);
+    } catch (logError) {
+      console.warn('Log failed (non-critical):', logError.message);
     }
 
     res.status(201).json({ message: 'Success', studentId: studentIdText });
 
   } catch (error) {
-    console.error("Reg Error:", error);
+    console.error("Registration Error:", error);
+    // Clean up if auth user was created but DB failed
+    if (error.message.includes("Database")) {
+       // Optional: await supabase.auth.admin.deleteUser(userId);
+    }
     res.status(400).json({ error: error.message });
   }
 };

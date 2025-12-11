@@ -1,59 +1,49 @@
 const supabase = require('../config/supabaseClient');
 
-// 1. GET STUDENT PROFILE (FIXED)
 exports.getStudentProfile = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Use maybeSingle() to prevent crash if 0 or >1 row is found
     const { data: student, error } = await supabase
       .from('students')
       .select('*')
       .eq('id', id)
-      .maybeSingle(); // <-- CRITICAL FIX
+      .maybeSingle();
 
     if (error) throw error;
-    
-    // If multiple students exist for this user ID, you must manually clean your database!
-    if (!student) {
-        return res.status(404).json({ error: 'Profile not initialized or not found.' });
-    }
+    if (!student) return res.status(404).json({ error: 'Profile not found.' });
 
     res.json(student);
   } catch (error) {
-    console.error("Profile Error:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
 
-// 2. GET ANNOUNCEMENTS
 exports.getAnnouncements = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('announcements')
       .select('*')
-      .in('target_audience', ['all', 'student'])
+      .or('target_audience.eq.all,target_audience.eq.student')
       .order('created_at', { ascending: false })
       .limit(5);
 
     if (error) throw error;
     res.json(data);
   } catch (error) {
-    console.error("Announcements Error:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
 
-// 3. VERIFY PAYMENT (No Change)
+// *** FIXED PAYMENT VERIFICATION ***
 exports.verifyPayment = async (req, res) => {
-  // ... (Your existing verifyPayment logic goes here) ...
   const { transaction_id, student_id } = req.body;
 
   if (!transaction_id || !student_id) {
-    return res.status(400).json({ error: "Missing transaction_id or student_id" });
+    return res.status(400).json({ error: "Missing transaction details" });
   }
   
   try {
+    // 1. Verify with Flutterwave
     const flwUrl = `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
     const response = await fetch(flwUrl, {
         method: 'GET',
@@ -66,13 +56,28 @@ exports.verifyPayment = async (req, res) => {
     const flwData = await response.json();
 
     if (flwData.status === 'success' && flwData.data.status === 'successful') {
+        
+        // 2. Check if student exists BEFORE updating
+        const { data: student, error: fetchError } = await supabase
+            .from('students')
+            .select('id')
+            .eq('id', student_id)
+            .maybeSingle();
+
+        if (!student) {
+            console.error(`PAYMENT ERROR: Student ${student_id} not found in DB.`);
+            return res.status(404).json({ error: "Student record not found. Contact Admin with Trans ID." });
+        }
+
+        // 3. Update Status
         const { error: updateError } = await supabase
             .from('students')
             .update({ payment_status: 'paid' })
             .eq('id', student_id);
 
-        if (updateError) throw new Error("Status update failed: " + updateError.message);
+        if (updateError) throw updateError;
 
+        // 4. Log Payment
         await supabase.from('payments').insert([{
             student_id: student_id,
             amount: flwData.data.amount,
@@ -80,34 +85,38 @@ exports.verifyPayment = async (req, res) => {
             status: 'successful'
         }]);
 
-        res.json({ message: 'Payment Verified' });
+        // 5. Log to Activity Logs
+        await supabase.from('activity_logs').insert([{
+            student_id: student_id,
+            student_name: 'System Payment',
+            student_id_text: 'PAYMENT',
+            action: 'payment_completed',
+            ip_address: '0.0.0.0',
+            device_info: 'Flutterwave Webhook'
+        }]);
+
+        res.json({ message: 'Payment Verified Successfully' });
     } else {
-        res.status(400).json({ error: 'Payment verification failed' });
+        res.status(400).json({ error: 'Flutterwave verification failed' });
     }
   } catch (err) {
-    console.error("Payment Error:", err.message);
+    console.error("Payment Error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// 4. GET CURRENT FEES (FIXED)
 exports.getSchoolFees = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('system_settings')
-      .select('*')
-      .in('key', ['fee_jamb', 'fee_alevel', 'fee_olevel']);
+      .select('*');
 
     if (error) throw error;
 
     const fees = {};
-    data.forEach(item => {
-        fees[item.key] = Number(item.value);
-    });
-
+    data.forEach(item => fees[item.key] = Number(item.value));
     res.json(fees);
   } catch (err) {
-    console.error("Fee Fetch Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 };

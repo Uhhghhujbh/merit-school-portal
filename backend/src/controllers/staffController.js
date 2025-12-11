@@ -1,5 +1,19 @@
 const supabase = require('../config/supabaseClient');
 
+// Helper function to normalize department names (doesn't affect database)
+const normalizeDepartment = (dept) => {
+  if (!dept) return null;
+  const input = dept.toLowerCase().trim();
+  
+  // Map variations to official names
+  if (input.includes('sci') || input === 'science') return 'Science';
+  if (input.includes('com') || input.includes('bus') || input === 'commercial' || input === 'business') return 'Commercial';
+  if (input.includes('art') || input.includes('alt') || input === 'humanities') return 'Art';
+  
+  // Return as-is if no match (capitalized)
+  return dept.charAt(0).toUpperCase() + dept.slice(1);
+};
+
 exports.registerStaff = async (req, res) => {
   const { 
     email, password, fullName, department, position, 
@@ -7,7 +21,7 @@ exports.registerStaff = async (req, res) => {
   } = req.body;
 
   try {
-    // 1. Validate Token from Database
+    // 1. Validate Token
     const { data: tokenData, error: tokenError } = await supabase
       .from('staff_tokens')
       .select('*')
@@ -19,7 +33,7 @@ exports.registerStaff = async (req, res) => {
       return res.status(403).json({ error: 'Invalid or expired staff token.' });
     }
 
-    // 2. Check if token was used within last 6 hours
+    // 2. Check token cooldown (6 hours)
     if (tokenData.used_at) {
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
       const lastUsed = new Date(tokenData.used_at);
@@ -31,13 +45,16 @@ exports.registerStaff = async (req, res) => {
       }
     }
 
-    // 3. Update token usage timestamp
+    // 3. Normalize department input
+    const normalizedDept = normalizeDepartment(department);
+
+    // 4. Update token usage
     await supabase
       .from('staff_tokens')
       .update({ used_at: new Date().toISOString() })
       .eq('token', adminToken);
 
-    // 4. Create Login
+    // 5. Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -48,7 +65,7 @@ exports.registerStaff = async (req, res) => {
     if (authError) throw authError;
     const userId = authData.user.id;
 
-    // 5. Update Profile Role
+    // 6. Update profile role
     const { error: profileError } = await supabase
       .from('profiles')
       .update({ role: 'staff', full_name: fullName })
@@ -56,10 +73,10 @@ exports.registerStaff = async (req, res) => {
 
     if (profileError) throw profileError;
 
-    // 6. Delete auto-created student row
+    // 7. Delete auto-created student row
     await supabase.from('students').delete().eq('id', userId);
 
-    // 7. Create Staff Record
+    // 8. Create staff record with normalized department
     const staffIdText = `STF/${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`;
     
     const { error: staffError } = await supabase
@@ -69,7 +86,7 @@ exports.registerStaff = async (req, res) => {
         staff_id_text: staffIdText,
         full_name: fullName,
         email,
-        department,
+        department: normalizedDept,
         position,
         phone_number: phone,
         address,
@@ -117,7 +134,6 @@ exports.staffLogin = async (req, res) => {
   }
 };
 
-// Get students in staff's department
 exports.getMyStudents = async (req, res) => {
   try {
     const staffDepartment = req.staff.department;

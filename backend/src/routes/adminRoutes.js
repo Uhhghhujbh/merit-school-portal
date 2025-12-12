@@ -11,6 +11,7 @@ router.get('/dashboard-stats', adminController.getDashboardStats);
 // Students
 router.get('/students', adminController.getAllStudents);
 router.post('/update-student', adminController.updateStudentStatus);
+router.delete('/students/:id', adminController.deleteStudent);
 
 // Settings & Fees
 router.get('/settings', adminController.getSettings);

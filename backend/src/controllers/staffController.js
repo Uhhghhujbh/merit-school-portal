@@ -1,16 +1,12 @@
 const supabase = require('../config/supabaseClient');
 
-// Helper function to normalize department names (doesn't affect database)
+// Helper to normalize department names
 const normalizeDepartment = (dept) => {
   if (!dept) return null;
   const input = dept.toLowerCase().trim();
-  
-  // Map variations to official names
   if (input.includes('sci') || input === 'science') return 'Science';
-  if (input.includes('com') || input.includes('bus') || input === 'commercial' || input === 'business') return 'Commercial';
+  if (input.includes('com') || input.includes('bus') || input === 'commercial') return 'Commercial';
   if (input.includes('art') || input.includes('alt') || input === 'humanities') return 'Art';
-  
-  // Return as-is if no match (capitalized)
   return dept.charAt(0).toUpperCase() + dept.slice(1);
 };
 
@@ -23,38 +19,16 @@ exports.registerStaff = async (req, res) => {
   try {
     // 1. Validate Token
     const { data: tokenData, error: tokenError } = await supabase
-      .from('staff_tokens')
+      .from('verification_codes') 
       .select('*')
-      .eq('token', adminToken)
-      .eq('is_active', true)
+      .eq('code', adminToken) 
       .single();
 
     if (tokenError || !tokenData) {
-      return res.status(403).json({ error: 'Invalid or expired staff token.' });
+      return res.status(403).json({ error: 'Invalid Staff Token.' });
     }
 
-    // 2. Check token cooldown (6 hours)
-    if (tokenData.used_at) {
-      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
-      const lastUsed = new Date(tokenData.used_at);
-      
-      if (lastUsed > sixHoursAgo) {
-        return res.status(403).json({ 
-          error: 'Token already used. Please wait 6 hours or use another token.' 
-        });
-      }
-    }
-
-    // 3. Normalize department input
-    const normalizedDept = normalizeDepartment(department);
-
-    // 4. Update token usage
-    await supabase
-      .from('staff_tokens')
-      .update({ used_at: new Date().toISOString() })
-      .eq('token', adminToken);
-
-    // 5. Create auth user
+    // 2. Create Auth User
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -65,18 +39,21 @@ exports.registerStaff = async (req, res) => {
     if (authError) throw authError;
     const userId = authData.user.id;
 
-    // 6. Update profile role
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ role: 'staff', full_name: fullName })
-      .eq('id', userId);
+    // 3. FORCE ROLE FIX: Update Profile & Delete Student Entry
+    // This explicitly sets the role to 'staff' to prevent access issues
+    await supabase.from('profiles').upsert({
+        id: userId,
+        email: email,
+        role: 'staff',
+        full_name: fullName
+    });
 
-    if (profileError) throw profileError;
-
-    // 7. Delete auto-created student row
+    // CRITICAL: Remove any auto-created student record immediately
+    // This stops the staff member from appearing in the student list
     await supabase.from('students').delete().eq('id', userId);
 
-    // 8. Create staff record with normalized department
+    // 4. Create Staff Record
+    const normalizedDept = normalizeDepartment(department);
     const staffIdText = `STF/${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`;
     
     const { error: staffError } = await supabase
@@ -96,14 +73,15 @@ exports.registerStaff = async (req, res) => {
       }]);
 
     if (staffError) {
+      // Rollback if staff creation fails to prevent orphan auth users
       await supabase.auth.admin.deleteUser(userId);
       throw staffError;
     }
 
-    res.status(201).json({ 
-      message: 'Staff Registration Successful', 
-      staffId: staffIdText 
-    });
+    // 5. Invalidate Token (Delete it so it can't be used again)
+    await supabase.from('verification_codes').delete().eq('code', adminToken);
+
+    res.status(201).json({ message: 'Staff Account Created Successfully', staffId: staffIdText });
 
   } catch (error) {
     console.error('Staff Reg Error:', error);
@@ -117,13 +95,14 @@ exports.staffLogin = async (req, res) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return res.status(401).json({ error: 'Invalid Credentials' });
 
+    // Verify they are actually staff by checking the 'staff' table
     const { data: staffData } = await supabase
       .from('staff')
       .select('*')
       .eq('id', data.user.id)
       .single();
     
-    if (!staffData) return res.status(403).json({ error: 'No Staff Profile Found.' });
+    if (!staffData) return res.status(403).json({ error: 'Access Denied: Not a Staff Account.' });
 
     res.json({ 
       user: { ...staffData, role: 'staff' }, 
@@ -135,24 +114,12 @@ exports.staffLogin = async (req, res) => {
 };
 
 exports.getMyStudents = async (req, res) => {
-  try {
-    const staffDepartment = req.staff.department;
-
-    if (!staffDepartment) {
-      return res.status(400).json({ error: 'Staff department not set.' });
+    // Placeholder for future logic to get students in staff's department
+    try {
+        const { data, error } = await supabase.from('students').select('*');
+        if (error) throw error;
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-
-    const { data: students, error } = await supabase
-      .from('students')
-      .select('*')
-      .eq('department', staffDepartment)
-      .order('surname');
-
-    if (error) throw error;
-
-    res.json(students || []);
-  } catch (err) {
-    console.error('Get Students Error:', err);
-    res.status(500).json({ error: err.message });
-  }
 };

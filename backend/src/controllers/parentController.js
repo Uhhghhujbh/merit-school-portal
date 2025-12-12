@@ -4,26 +4,25 @@ exports.parentLogin = async (req, res) => {
   const { studentId, password } = req.body;
 
   try {
-    // Force trim to remove accidental spaces from copy-paste
+    // Force trim and cleanup
     const cleanId = studentId ? studentId.trim() : "";
 
-    console.log(`Parent trying to login with ID: "${cleanId}"`);
+    console.log(`Checking Parent Login for ID: "${cleanId}"`);
 
-    // 1. Find student using 'ilike' (Case Insensitive) and 'maybeSingle' to avoid crashes
+    // 1. Find student using 'ilike' (Case Insensitive) and 'maybeSingle'
     const { data: student, error } = await supabase
       .from('students')
       .select('*, profiles:id(full_name)')
-      .ilike('student_id_text', cleanId)
+      .ilike('student_id_text', cleanId) 
       .maybeSingle();
 
     if (error) {
-        console.error("DB Error:", error);
-        return res.status(500).json({ error: "Database error during lookup" });
+       console.error("DB Error:", error);
+       return res.status(500).json({ error: "Database error" });
     }
 
     if (!student) {
-      console.log(`Login Failed: ID "${cleanId}" not found in DB.`);
-      return res.status(404).json({ error: `Student ID "${cleanId}" not found. Check exact spelling.` });
+      return res.status(404).json({ error: `Student ID "${cleanId}" not found. Please check the admission letter.` });
     }
 
     // 2. Check Password (Surname or Hash)
@@ -31,12 +30,11 @@ exports.parentLogin = async (req, res) => {
     const cleanPass = password.trim().toLowerCase();
     const cleanSurname = surname.trim().toLowerCase();
 
-    // Allow login if password matches Surname OR if it matches a set parent password
     const isSurnameMatch = cleanSurname === cleanPass;
     const isHashMatch = student.parent_password_hash && student.parent_password_hash === password;
 
     if (!isSurnameMatch && !isHashMatch) {
-      return res.status(401).json({ error: `Invalid Password. Try using the student's surname: ${surname}` });
+      return res.status(401).json({ error: `Invalid Password. Try using the surname: ${surname}` });
     }
 
     // 3. Success
@@ -52,7 +50,7 @@ exports.parentLogin = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Parent Login Critical Error:', err);
+    console.error('Parent Login Error:', err);
     res.status(500).json({ error: 'Server Error' });
   }
 };

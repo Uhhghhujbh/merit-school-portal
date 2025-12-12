@@ -40,7 +40,7 @@ exports.registerStaff = async (req, res) => {
     const userId = authData.user.id;
 
     // 3. FORCE ROLE FIX: Update Profile & Delete Student Entry
-    // This explicitly sets the role to 'staff' to prevent access issues
+    // This is the CRITICAL fix for "Staff falling as Student"
     await supabase.from('profiles').upsert({
         id: userId,
         email: email,
@@ -48,8 +48,7 @@ exports.registerStaff = async (req, res) => {
         full_name: fullName
     });
 
-    // CRITICAL: Remove any auto-created student record immediately
-    // This stops the staff member from appearing in the student list
+    // Remove the auto-created student record immediately
     await supabase.from('students').delete().eq('id', userId);
 
     // 4. Create Staff Record
@@ -73,12 +72,12 @@ exports.registerStaff = async (req, res) => {
       }]);
 
     if (staffError) {
-      // Rollback if staff creation fails to prevent orphan auth users
+      // Rollback if staff creation fails
       await supabase.auth.admin.deleteUser(userId);
       throw staffError;
     }
 
-    // 5. Invalidate Token (Delete it so it can't be used again)
+    // 5. Invalidate Token
     await supabase.from('verification_codes').delete().eq('code', adminToken);
 
     res.status(201).json({ message: 'Staff Account Created Successfully', staffId: staffIdText });
@@ -95,7 +94,7 @@ exports.staffLogin = async (req, res) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return res.status(401).json({ error: 'Invalid Credentials' });
 
-    // Verify they are actually staff by checking the 'staff' table
+    // Verify they are actually staff
     const { data: staffData } = await supabase
       .from('staff')
       .select('*')
@@ -114,7 +113,7 @@ exports.staffLogin = async (req, res) => {
 };
 
 exports.getMyStudents = async (req, res) => {
-    // Placeholder for future logic to get students in staff's department
+    // Placeholder logic
     try {
         const { data, error } = await supabase.from('students').select('*');
         if (error) throw error;

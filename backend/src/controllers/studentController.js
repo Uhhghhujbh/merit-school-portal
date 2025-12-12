@@ -3,7 +3,6 @@ const supabase = require('../config/supabaseClient');
 exports.getStudentProfile = async (req, res) => {
   try {
     const { id } = req.params;
-    // Uses maybeSingle to avoid 406 error if multiple rows exist (safety check)
     const { data: student, error } = await supabase
       .from('students')
       .select('*')
@@ -44,7 +43,7 @@ exports.verifyPayment = async (req, res) => {
   }
   
   try {
-    // 1. Verify with Flutterwave API
+    // 1. Verify with Flutterwave
     const flwUrl = `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
     const response = await fetch(flwUrl, {
         method: 'GET',
@@ -58,7 +57,7 @@ exports.verifyPayment = async (req, res) => {
 
     if (flwData.status === 'success' && flwData.data.status === 'successful') {
         
-        // 2. Check if student exists BEFORE attempting update
+        // 2. Check if student exists
         const { data: student, error: fetchError } = await supabase
             .from('students')
             .select('id')
@@ -67,10 +66,10 @@ exports.verifyPayment = async (req, res) => {
 
         if (!student) {
             console.error(`PAYMENT ERROR: Student ${student_id} not found in DB.`);
-            return res.status(404).json({ error: "Student record not found. Contact Admin with Trans ID." });
+            return res.status(404).json({ error: "Student record not found. Contact Admin." });
         }
 
-        // 3. Update Student Status to 'paid'
+        // 3. Update Status
         const { error: updateError } = await supabase
             .from('students')
             .update({ payment_status: 'paid' })
@@ -78,7 +77,7 @@ exports.verifyPayment = async (req, res) => {
 
         if (updateError) throw updateError;
 
-        // 4. Log Payment Record
+        // 4. Log Payment
         await supabase.from('payments').insert([{
             student_id: student_id,
             amount: flwData.data.amount,
@@ -86,7 +85,7 @@ exports.verifyPayment = async (req, res) => {
             status: 'successful'
         }]);
 
-        // 5. Log to Activity Logs for Admin Dashboard
+        // 5. Log Activity
         await supabase.from('activity_logs').insert([{
             student_id: student_id,
             student_name: 'System Payment',
@@ -96,7 +95,6 @@ exports.verifyPayment = async (req, res) => {
             device_info: 'Flutterwave Webhook'
         }]);
 
-        console.log(`Payment Verified for Student ${student_id}`);
         res.json({ message: 'Payment Verified Successfully' });
     } else {
         res.status(400).json({ error: 'Flutterwave verification failed' });
@@ -109,10 +107,7 @@ exports.verifyPayment = async (req, res) => {
 
 exports.getSchoolFees = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('*');
-
+    const { data, error } = await supabase.from('system_settings').select('*');
     if (error) throw error;
 
     const fees = {};

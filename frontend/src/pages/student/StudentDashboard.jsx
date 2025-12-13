@@ -8,7 +8,7 @@ import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
 import { 
   LayoutDashboard, BookOpen, CreditCard, User, LogOut, 
   Bell, Calendar, Lock, AlertCircle, CheckCircle, ExternalLink, 
-  Printer, Shield, Menu, X, FileText, ChevronRight, Book, FileCheck, Download, Share2
+  Printer, Shield, Menu, X, FileText, ChevronRight, Book, FileCheck, Download, Share2, AlertTriangle, Loader2
 } from 'lucide-react';
 import AdmissionLetter from '../../components/shared/AdmissionLetter';
 import LibraryView from '../../components/shared/LibraryView';
@@ -18,134 +18,90 @@ const StudentDashboard = () => {
   const { user, token, logout } = useAuthStore();
   const navigate = useNavigate();
   
+  // --- STATE ---
   const [activeTab, setActiveTab] = useState('overview');
   const [profile, setProfile] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
   const [fees, setFees] = useState({ fee_jamb: 0, fee_alevel: 0, fee_olevel: 0 });
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
+  // --- REFS ---
   const admissionPrintRef = useRef();
   const reportPrintRef = useRef();
   
-  // Desktop Print
+  // --- PRINT HANDLERS ---
   const handleAdmissionPrint = useReactToPrint({ 
     contentRef: admissionPrintRef,
     documentTitle: `Admission_Letter_${profile?.surname || 'Student'}`,
-    pageStyle: `
-      @page {
-        size: A4;
-        margin: 15mm;
-      }
-      @media print {
-        body {
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
-    `
+    pageStyle: `@page { size: A4; margin: 0; } @media print { body { -webkit-print-color-adjust: exact; } }`
   });
 
   const handleReportPrint = useReactToPrint({
-    content: () => reportPrintRef.current,
+    contentRef: reportPrintRef,
     documentTitle: `Report_Card_${profile?.surname || 'Student'}`,
-    pageStyle: `
-      @page {
-        size: A4;
-        margin: 15mm;
-      }
-      @media print {
-        body {
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
-    `
+    pageStyle: `@page { size: A4; margin: 10mm; } @media print { body { -webkit-print-color-adjust: exact; } }`
   });
 
-  // Mobile Download Admission Letter
+  // --- DOWNLOAD HANDLERS ---
   const handleAdmissionDownload = async () => {
     try {
-      const element = admissionPrintRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-      
+      if(!admissionPrintRef.current) return;
+      const canvas = await html2canvas(admissionPrintRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 850 });
       const link = document.createElement('a');
-      link.download = `Admission_Letter_${profile?.surname}.png`;
+      link.download = `Admission_${profile?.surname}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-    } catch (err) {
-      alert('Failed to download. Please try print instead.');
-    }
+    } catch (err) { alert('Download failed. Try Print PDF.'); }
   };
 
-  // Mobile Share Admission Letter
   const handleAdmissionShare = async () => {
     try {
-      const element = admissionPrintRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-      
+      if(!admissionPrintRef.current) return;
+      const canvas = await html2canvas(admissionPrintRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
       canvas.toBlob(async (blob) => {
-        const file = new File([blob], `Admission_Letter_${profile?.surname}.png`, { type: 'image/png' });
-        
+        const file = new File([blob], `Admission_${profile?.surname}.png`, { type: 'image/png' });
         if (navigator.share && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: 'Admission Letter',
-            text: 'Merit College Admission Letter'
-          });
-        } else {
-          alert('Share not supported. Use Download instead.');
-        }
+          await navigator.share({ files: [file], title: 'Admission Letter' });
+        } else { alert('Share not supported.'); }
       });
+    } catch (err) { alert('Share failed.'); }
+  };
+
+  // --- INITIALIZATION ---
+  useEffect(() => {
+    if (!token) { navigate('/auth/student'); return; }
+    loadDashboardData();
+  }, [user, token, navigate]);
+
+  const loadDashboardData = async () => {
+    setRefreshing(true);
+    try {
+      if (user?.id) {
+        const [profileData, msgData, feeData, resultsData] = await Promise.all([
+          api.get(`/students/profile/${user.id}`, token),
+          api.get(`/students/announcements`, token),
+          api.get(`/students/fees`, token),
+          api.get(`/results/${user.id}`, token)
+        ]);
+        
+        setProfile(profileData);
+        setAnnouncements(msgData || []);
+        setFees(feeData || { fee_jamb: 15000, fee_alevel: 27500, fee_olevel: 10000 });
+        setResults(resultsData || []);
+      }
     } catch (err) {
-      alert('Failed to share. Please try download instead.');
+      console.error("Dashboard Load Error:", err);
+      // Don't crash, just show empty states
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    if (!token) {
-      navigate('/auth/student');
-      return;
-    }
-    
-    const initDashboard = async () => {
-      try {
-        if (user?.id) {
-          const [profileData, msgData, feeData, resultsData] = await Promise.all([
-            api.get(`/students/profile/${user.id}`, token),
-            api.get(`/students/announcements`, token),
-            api.get(`/students/fees`, token),
-            api.get(`/results/${user.id}`, token)
-          ]);
-          
-          setProfile(profileData);
-          setAnnouncements(msgData || []);
-          setFees(feeData || { fee_jamb: 15000, fee_alevel: 27500, fee_olevel: 10000 });
-          setResults(resultsData || []);
-        }
-      } catch (err) {
-        console.error("Dashboard Load Error:", err);
-        setFees({ fee_jamb: 15000, fee_alevel: 27500, fee_olevel: 10000 });
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    initDashboard();
-  }, [user, token, navigate]);
-
+  // --- PAYMENT LOGIC ---
   const getFeeAmount = () => {
     const prog = profile?.program_type;
     if (prog === 'JAMB') return fees.fee_jamb;
@@ -154,12 +110,6 @@ const StudentDashboard = () => {
   };
 
   const amount = profile ? getFeeAmount() : 0;
-
-  const calculateAverage = () => {
-    if (!results || results.length === 0) return 0;
-    const total = results.reduce((acc, curr) => acc + curr.total_score, 0);
-    return (total / results.length).toFixed(1);
-  };
 
   const flutterwaveConfig = {
     public_key: import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY,
@@ -173,95 +123,95 @@ const StudentDashboard = () => {
       name: `${profile?.surname || ''} ${profile?.first_name || ''}`,
     },
     customizations: {
-      title: 'Merit College Tuition Payment',
-      description: `${profile?.program_type || 'Student'} Programme Fee - ₦${amount.toLocaleString()}`,
-      logo: 'https://st2.depositphotos.com/4403291/7418/v/450/depositphotos_74189661-stock-illustration-online-shop-log.jpg',
+      title: 'Merit College Tuition',
+      description: `${profile?.program_type} Tuition Fee`,
+      logo: 'https://meritcollege.vercel.app/meritlogo.jpg',
     },
   };
 
   const handleFlutterPayment = useFlutterwave(flutterwaveConfig);
 
   const initiatePayment = () => {
-    if (!import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY) {
-      alert("Payment system not configured. Please contact administrator.");
-      return;
-    }
-
-    const pubKey = import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY;
-    if (pubKey.includes('TEST')) {
-      alert("System is in TEST MODE. Real payments cannot be processed.");
-    }
-
+    if (!import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY) return alert("Payment system not configured.");
+    
     handleFlutterPayment({
       callback: async (response) => {
         closePaymentModal();
-        
         if (response.status === "successful") {
           try {
             await api.post('/students/verify-payment', {
               transaction_id: response.transaction_id,
-              student_id: user.id,
-              amount: response.amount,
-              currency: response.currency
+              student_id: user.id
             }, token);
             
-            alert("Payment Successful! Your account has been updated.");
-            setTimeout(() => window.location.reload(), 1500);
+            alert("Payment Successful! Refreshing...");
+            loadDashboardData(); // Auto-refresh to unlock
           } catch (err) {
-            alert("Payment completed but verification failed. Contact admin with transaction ID: " + response.transaction_id);
+            alert("Payment verification pending. Contact admin.");
           }
-        } else {
-          alert("Payment was not successful. Please try again.");
         }
       },
       onClose: () => {},
     });
   };
 
-  const openTimetable = () => {
-    window.open('https://meritstudenttimetable.vercel.app', '_blank');
-  };
-
+  // --- HELPERS ---
+  const openTimetable = () => window.open('https://meritstudenttimetable.vercel.app', '_blank');
+  
   const handleLogout = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      logout();
-      navigate('/');
-    }
+    if (window.confirm('Logout?')) { logout(); navigate('/'); }
   };
 
+  // --- LOCK LOGIC ---
   const isAccountLocked = !profile?.is_validated;
   const isPaymentLocked = profile?.payment_status !== 'paid';
+  const isFeatureLocked = isAccountLocked || isPaymentLocked; // Master Lock
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-900 mb-4"></div>
-        <p className="text-slate-600 font-medium animate-pulse">Loading Student Portal...</p>
-      </div>
-    );
-  }
+  // Group Results
+  const groupedResults = results.reduce((groups, r) => {
+    const key = `${r.session} - ${r.term}`; // "2025/2026 - First Term"
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+    return groups;
+  }, {});
+
+  const calculateAverage = () => {
+    if (!results || results.length === 0) return 0;
+    const total = results.reduce((acc, curr) => acc + curr.total_score, 0);
+    return (total / results.length).toFixed(1);
+  };
+
+  // --- RENDER ---
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+      <Loader2 className="animate-spin w-12 h-12 text-blue-900 mb-4"/>
+      <p className="text-slate-600 font-medium">Loading Student Portal...</p>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800">
       
-      <div className="md:hidden fixed w-full bg-blue-900 text-white z-50 flex justify-between items-center p-4 shadow-md">
-        <div className="font-bold text-lg tracking-wide">MCAS Portal</div>
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-blue-800 rounded">
-          {sidebarOpen ? <X /> : <Menu />}
-        </button>
-      </div>
-
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 w-72 bg-blue-900 text-white transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col shadow-2xl`}>
-        
-        <div className="p-6 text-2xl font-bold border-b border-blue-800 flex items-center gap-3 bg-blue-950">
-          <div className="w-10 h-10 bg-white text-blue-900 rounded-full flex items-center justify-center text-sm font-black">MC</div>
-          <div className="flex flex-col">
-            <span>MCAS</span>
-            <span className="text-xs text-blue-300 font-normal uppercase tracking-wider">Student Portal</span>
+      {/* --- SIDEBAR --- */}
+      <aside className={`
+        fixed md:static inset-y-0 left-0 z-40 w-72 bg-blue-900 text-white shadow-2xl 
+        transform transition-transform duration-300 ease-in-out 
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col
+      `}>
+        {/* Header */}
+        <div className="p-6 border-b border-blue-800 flex items-center gap-3 bg-blue-950">
+          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden border-2 border-blue-200">
+             <img src="/meritlogo.jpg" alt="Logo" className="w-full h-full object-cover" />
           </div>
+          <div>
+            <h1 className="font-bold tracking-tight text-lg">MCAS PORTAL</h1>
+            <p className="text-[10px] text-blue-300 uppercase tracking-widest">Student Access</p>
+          </div>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-blue-300"><X/></button>
         </div>
-        
-        <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
+
+        {/* Menu */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
           <SidebarItem 
             icon={<LayoutDashboard size={20}/>} 
             label="Overview" 
@@ -269,460 +219,329 @@ const StudentDashboard = () => {
             onClick={() => { setActiveTab('overview'); setSidebarOpen(false); }} 
           />
           
-          <SidebarItem 
-            icon={<BookOpen size={20}/>} 
-            label="My Courses" 
-            active={activeTab === 'courses'} 
-            onClick={() => !isAccountLocked && setActiveTab('courses')} 
-            locked={isAccountLocked}
-          />
-          
-          <SidebarItem 
-            icon={<CreditCard size={20}/>} 
-            label="Tuition & Fees" 
-            active={activeTab === 'payments'} 
-            onClick={() => !isAccountLocked && setActiveTab('payments')} 
-            locked={isAccountLocked}
-          />
-          
-          <SidebarItem 
-            icon={<FileCheck size={20}/>} 
-            label="Report Card" 
-            active={activeTab === 'report'} 
-            onClick={() => !isAccountLocked && setActiveTab('report')} 
-            locked={isAccountLocked}
-          />
-          
-          <SidebarItem 
-            icon={<Book size={20}/>} 
-            label="Library" 
-            active={activeTab === 'library'} 
-            onClick={() => !isAccountLocked && setActiveTab('library')} 
-            locked={isAccountLocked}
-          />
-          
-          <button 
-            onClick={openTimetable}
-            disabled={isAccountLocked || isPaymentLocked}
-            className={`flex items-center gap-3 px-4 py-3.5 rounded-xl w-full text-left transition-all duration-200 group ${
-              (isAccountLocked || isPaymentLocked) 
-                ? 'text-blue-400 cursor-not-allowed bg-blue-900/50' 
-                : 'text-blue-100 hover:bg-blue-800 hover:text-white hover:shadow-lg'
-            }`}
-          >
-            <Calendar size={20} className="group-hover:scale-110 transition-transform"/> 
-            <span className="font-medium flex-1">Timetable</span>
-            {(isAccountLocked || isPaymentLocked) 
-              ? <Lock size={16} className="text-blue-400"/> 
-              : <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity"/>
-            }
-          </button>
+          <div className="pt-4 pb-2">
+            <p className="px-4 text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Academics</p>
+            <SidebarItem 
+              icon={<BookOpen size={20}/>} 
+              label="My Courses" 
+              active={activeTab === 'courses'} 
+              onClick={() => !isFeatureLocked && setActiveTab('courses')} 
+              locked={isFeatureLocked}
+            />
+            <SidebarItem 
+              icon={<Calendar size={20}/>} 
+              label="Timetable" 
+              active={activeTab === 'timetable'} 
+              onClick={openTimetable} // Always allow click, check lock inside function if needed, but usually external link
+              locked={isFeatureLocked}
+            />
+            <SidebarItem 
+              icon={<FileCheck size={20}/>} 
+              label="Report Card" 
+              active={activeTab === 'report'} 
+              onClick={() => !isFeatureLocked && setActiveTab('report')} 
+              locked={isFeatureLocked}
+            />
+            <SidebarItem 
+              icon={<Book size={20}/>} 
+              label="Library" 
+              active={activeTab === 'library'} 
+              onClick={() => !isFeatureLocked && setActiveTab('library')} 
+              locked={isFeatureLocked}
+            />
+          </div>
+
+          <div className="pt-2">
+            <p className="px-4 text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Finance</p>
+            <SidebarItem 
+              icon={<CreditCard size={20}/>} 
+              label="Tuition & Fees" 
+              active={activeTab === 'payments'} 
+              onClick={() => setActiveTab('payments')} // Always accessible so they can pay
+            />
+          </div>
         </nav>
 
+        {/* User Footer */}
         <div className="p-4 border-t border-blue-800 bg-blue-950">
-           <div className="flex items-center gap-3 mb-4 p-2 bg-blue-900 rounded-lg">
-              <div className="w-full h-full bg-blue-100 rounded-full flex items-center justify-center text-4xl font-bold text-blue-700 overflow-hidden">
-  {profile?.photo_url ? (
-    <img 
-      src={profile.photo_url} 
-      alt="Profile" 
-      className="w-full h-full object-cover" 
-    />
-  ) : (
-    profile?.surname?.charAt(0)
-  )}
-</div>
+           <div className="flex items-center gap-3 mb-4 p-2 bg-blue-900 rounded-xl border border-blue-800">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl font-bold text-blue-700 overflow-hidden">
+                 {profile?.photo_url ? <img src={profile.photo_url} className="w-full h-full object-cover"/> : profile?.surname?.charAt(0)}
+              </div>
               <div className="overflow-hidden">
-                <p className="font-bold text-sm truncate">{profile?.surname} {profile?.first_name}</p>
-                <p className="text-xs text-blue-300 truncate">{profile?.student_id_text}</p>
+                 <p className="font-bold text-sm truncate w-32">{profile?.surname} {profile?.first_name}</p>
+                 <p className="text-[10px] text-blue-300 font-mono truncate">{profile?.student_id_text}</p>
               </div>
            </div>
-           <button 
-             onClick={handleLogout} 
-             className="flex items-center justify-center gap-2 text-red-200 hover:text-white w-full p-2.5 rounded-lg hover:bg-red-900/50 transition-colors border border-transparent hover:border-red-800"
-           >
-             <LogOut size={18} /> Sign Out
+           <button onClick={handleLogout} className="flex items-center justify-center gap-2 text-red-200 hover:text-white w-full p-2 rounded-lg hover:bg-red-900/30 transition border border-transparent hover:border-red-800">
+              <LogOut size={16} /> Sign Out
            </button>
         </div>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 mt-16 md:mt-0 overflow-y-auto h-screen bg-slate-50">
+      {/* --- MAIN CONTENT --- */}
+      <main className="flex-1 p-4 md:p-8 h-screen overflow-y-auto bg-slate-50">
         
-        <header className="flex flex-col md:flex-row justify-between md:items-end mb-10 border-b border-slate-200 pb-6 gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-              {activeTab === 'overview' ? `Welcome back, ${profile?.surname}!` : 
-               activeTab === 'courses' ? 'Academic Courses' : 
-               activeTab === 'report' ? 'Academic Report' :
-               activeTab === 'library' ? 'Library' :
-               'Financial Status'}
-            </h1>
-            <p className="text-slate-500 mt-2 font-medium flex items-center gap-2">
-              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">Session 2025/2026</span>
-              <span>•</span>
-              <span>{profile?.program_type} Programme</span>
-            </p>
-          </div>
-          
-          <div className="flex flex-wrap gap-3">
-             <div className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 border shadow-sm ${isAccountLocked ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-               {isAccountLocked ? <Lock size={16}/> : <Shield size={16}/>}
-               <div>
-                 <span className="block text-[10px] uppercase tracking-wider opacity-80">Account Status</span>
-                 {isAccountLocked ? 'Pending Validation' : 'Active & Verified'}
-               </div>
-             </div>
+        {/* Mobile Header */}
+        <div className="md:hidden flex justify-between items-center mb-6">
+           <div className="flex items-center gap-2">
+              <img src="/meritlogo.jpg" className="w-8 h-8 rounded-full" />
+              <span className="font-bold text-slate-800">MCAS</span>
+           </div>
+           <button onClick={() => setSidebarOpen(true)} className="p-2 bg-white rounded shadow-sm"><Menu/></button>
+        </div>
 
-             <div className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 border shadow-sm ${isPaymentLocked ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-               <CreditCard size={16}/>
-               <div>
-                 <span className="block text-[10px] uppercase tracking-wider opacity-80">Tuition Fee</span>
-                 {isPaymentLocked ? 'Payment Pending' : 'Payment Complete'}
-               </div>
-             </div>
-          </div>
+        {/* Desktop Header */}
+        <header className="hidden md:flex justify-between items-end mb-10 border-b border-slate-200 pb-6">
+           <div>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                 {activeTab === 'overview' ? `Hello, ${profile?.first_name}!` : 
+                  activeTab === 'courses' ? 'My Registered Courses' :
+                  activeTab === 'report' ? 'Academic Results' :
+                  activeTab === 'payments' ? 'Financial Center' : 'Digital Library'}
+              </h1>
+              <p className="text-slate-500 mt-1 font-medium">Session: <span className="text-blue-600 font-bold">2025/2026</span></p>
+           </div>
+           <div className="flex gap-3">
+              <StatusBadge icon={isAccountLocked ? Lock : Shield} label={isAccountLocked ? "Unverified" : "Verified"} color={isAccountLocked ? "orange" : "green"} />
+              <StatusBadge icon={CreditCard} label={isPaymentLocked ? "Unpaid" : "Paid"} color={isPaymentLocked ? "red" : "blue"} />
+           </div>
         </header>
 
+        {/* === TAB CONTENT === */}
+
+        {/* 1. OVERVIEW TAB */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fadeIn">
-            
-            <div className="lg:col-span-2 space-y-8">
-              
-              {isAccountLocked && (
-                <div className="bg-orange-50 border-l-8 border-orange-500 p-6 rounded-r-xl shadow-sm flex flex-col sm:flex-row gap-6 items-start">
-                  <div className="p-4 bg-orange-100 text-orange-600 rounded-full shrink-0">
-                    <Lock size={32} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-orange-900 mb-2">Admission Under Review</h3>
-                    <p className="text-orange-800 text-sm leading-relaxed mb-4">
-                      Your registration has been received and is currently being reviewed by the Merit College Administration. 
-                      While under review, access to course materials, payments, and your admission letter is restricted.
-                    </p>
-                    <div className="text-xs font-bold text-orange-900 bg-orange-100 inline-block px-3 py-1 rounded">
-                      Expected Resolution: 24-48 Hours
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fadeIn">
+              <div className="lg:col-span-2 space-y-8">
+                 
+                 {/* Lock Warning */}
+                 {isFeatureLocked && (
+                    <div className="bg-orange-50 border-l-8 border-orange-500 p-6 rounded-r-xl shadow-sm flex gap-4 items-start">
+                       <Lock className="text-orange-500 shrink-0 mt-1" size={24}/>
+                       <div>
+                          <h3 className="font-bold text-orange-900 text-lg">Portal Access Restricted</h3>
+                          <p className="text-orange-800 text-sm mt-1">
+                             Your access to academic features (Results, Library, Admission Letter) is currently locked. 
+                             Please complete your <strong>Tuition Payment</strong> and wait for <strong>Admin Validation</strong>.
+                          </p>
+                          <button onClick={() => setActiveTab('payments')} className="mt-3 text-xs font-bold bg-orange-200 text-orange-800 px-3 py-1.5 rounded hover:bg-orange-300 transition">
+                             Go to Payments &rarr;
+                          </button>
+                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                 )}
 
-              {!isAccountLocked && (
-                <div className="bg-white p-8 rounded-2xl shadow-soft border border-slate-200 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5">
-                    <FileText size={150}/>
-                  </div>
-                  <div className="relative z-10">
-                    <h3 className="font-bold text-xl text-slate-900 mb-2 flex items-center gap-2">
-                      <FileText className="text-blue-600"/> Admission Letter
-                    </h3>
-                    <p className="text-slate-500 mb-6 max-w-lg">
-                      {isPaymentLocked 
-                        ? "Your admission letter is generated but locked. Please complete your tuition payment to unlock and download it."
-                        : "Your official Merit College admission letter is ready. You can download and print it for your records."}
-                    </p>
-                    
-                    <div className="flex gap-3">
-                      <button 
-                        onClick={handleAdmissionPrint}
-                        disabled={isPaymentLocked}
-                        className={`hidden md:flex px-6 py-3 rounded-xl font-bold items-center gap-3 transition-all ${
-                          isPaymentLocked 
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                          : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
-                        }`}
-                      >
-                        {isPaymentLocked ? <Lock size={18}/> : <Printer size={18}/>}
-                        {isPaymentLocked ? 'Locked' : 'Print PDF'}
-                      </button>
-                      
-                      <button 
-                        onClick={handleAdmissionDownload}
-                        disabled={isPaymentLocked}
-                        className={`px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all ${
-                          isPaymentLocked 
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                          : 'bg-green-600 text-white hover:bg-green-700 shadow-lg'
-                        }`}
-                      >
-                        <Download size={18}/>
-                        Download
-                      </button>
-                      
-                      <button 
-                        onClick={handleAdmissionShare}
-                        disabled={isPaymentLocked}
-                        className={`md:hidden px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-all ${
-                          isPaymentLocked 
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                          : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg'
-                        }`}
-                      >
-                        <Share2 size={18}/>
-                        Share
-                      </button>
+                 {/* Admission Letter Card */}
+                 <div className={`bg-white p-8 rounded-2xl shadow-soft border border-slate-200 relative overflow-hidden ${isFeatureLocked ? 'opacity-70 pointer-events-none grayscale' : ''}`}>
+                    <div className="absolute top-0 right-0 p-6 opacity-5"><FileText size={120}/></div>
+                    <h3 className="font-bold text-xl text-slate-900 mb-2">Admission Letter</h3>
+                    <p className="text-slate-500 mb-6 max-w-md">Download your official provisional admission letter for the 2025/2026 academic session.</p>
+                    <div className="flex flex-wrap gap-3">
+                       <button onClick={handleAdmissionPrint} className="btn-primary flex items-center gap-2"><Printer size={18}/> Print PDF</button>
+                       <button onClick={handleAdmissionDownload} className="btn-secondary flex items-center gap-2"><Download size={18}/> Download</button>
                     </div>
-                  </div>
-                </div>
-              )}
+                 </div>
 
-              <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <Bell className="text-blue-600 fill-current" size={18}/> Campus Announcements
-                  </h3>
-                  <span className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full">
-                    {announcements.length} New
-                  </span>
-                </div>
-                
-                <div className="divide-y divide-slate-100">
-                  {announcements.length > 0 ? (
-                    announcements.map((msg) => (
-                      <div key={msg.id} className="p-6 hover:bg-blue-50/50 transition-colors group">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors">{msg.title}</h4>
-                          <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded">
-                            {new Date(msg.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-slate-600 text-sm leading-relaxed">{msg.message}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-10 text-center flex flex-col items-center text-slate-400">
-                      <Bell size={40} className="mb-3 opacity-20"/>
-                      <p>No announcements have been posted yet.</p>
+                 {/* Announcements */}
+                 <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
+                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><Bell className="text-blue-600" size={18}/> Announcements</h3>
+                       <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{announcements.length}</span>
                     </div>
-                  )}
-                </div>
+                    <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                       {announcements.length === 0 ? <p className="p-6 text-center text-slate-400">No news yet.</p> : 
+                        announcements.map(msg => (
+                           <div key={msg.id} className="p-6 hover:bg-slate-50 transition">
+                              <h4 className="font-bold text-slate-900 text-sm">{msg.title}</h4>
+                              <p className="text-slate-600 text-xs mt-1 line-clamp-2">{msg.message}</p>
+                              <p className="text-[10px] text-slate-400 mt-2">{new Date(msg.created_at).toLocaleDateString()}</p>
+                           </div>
+                        ))
+                       }
+                    </div>
+                 </div>
               </div>
-            </div>
 
-            <div className="space-y-6">
-              <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
-                <div className="bg-blue-900 h-24 relative">
-                  <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2">
-                    <div className="w-24 h-24 bg-white p-1 rounded-full shadow-lg">
-                      <div className="w-full h-full bg-blue-100 rounded-full flex items-center justify-center text-4xl font-bold text-blue-700">
-                        {profile?.surname?.charAt(0)}
-                      </div>
+              {/* Sidebar Info */}
+              <div className="space-y-6">
+                 <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
+                    <div className="bg-gradient-to-br from-blue-900 to-blue-800 h-24 relative">
+                       <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2">
+                          <div className="w-20 h-20 bg-white p-1 rounded-full shadow-lg">
+                             <img src={profile?.photo_url || "/meritlogo.jpg"} className="w-full h-full rounded-full object-cover bg-slate-100" />
+                          </div>
+                       </div>
                     </div>
-                  </div>
-                </div>
-                
-                <div className="pt-12 pb-6 px-6 text-center">
-                  <h2 className="text-xl font-bold text-slate-900">{profile?.surname} {profile?.first_name}</h2>
-                  <p className="text-slate-500 text-sm mb-6">{profile?.email}</p>
-                  
-                  <div className="grid grid-cols-2 gap-4 text-left text-sm border-t border-slate-100 pt-6">
-                    <div>
-                      <span className="block text-slate-400 text-xs uppercase tracking-wider mb-1">Student ID</span>
-                      <span className="font-semibold text-slate-800 block bg-slate-50 p-2 rounded border border-slate-100">{profile?.student_id_text}</span>
+                    <div className="pt-12 pb-6 px-6 text-center">
+                       <h2 className="font-bold text-lg text-slate-900">{profile?.surname} {profile?.first_name}</h2>
+                       <p className="text-slate-500 text-xs">{profile?.email}</p>
+                       <div className="mt-6 grid grid-cols-2 gap-4 text-left text-xs border-t pt-4">
+                          <div><p className="text-slate-400 uppercase">Matric No</p><p className="font-bold">{profile?.student_id_text}</p></div>
+                          <div><p className="text-slate-400 uppercase">Dept</p><p className="font-bold">{profile?.department}</p></div>
+                       </div>
                     </div>
-                    <div>
-                      <span className="block text-slate-400 text-xs uppercase tracking-wider mb-1">Department</span>
-                      <span className="font-semibold text-slate-800 block bg-slate-50 p-2 rounded border border-slate-100">{profile?.department}</span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="block text-slate-400 text-xs uppercase tracking-wider mb-1">Parent Access</span>
-                      <div className={`p-2 rounded border flex items-center justify-between ${profile?.is_parent_access_enabled ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                        <span className="font-bold">{profile?.is_parent_access_enabled ? 'Enabled' : 'Disabled'}</span>
-                        {profile?.is_parent_access_enabled ? <CheckCircle size={16}/> : <X size={16}/>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                 </div>
               </div>
-            </div>
-
-          </div>
+           </div>
         )}
 
-        {activeTab === 'courses' && !isAccountLocked && (
-          <div className="bg-white p-8 rounded-2xl shadow-soft border border-slate-200 animate-fadeIn">
-            <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
-              <BookOpen className="text-blue-600"/> Registered Subjects
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {profile?.subjects?.map((sub, idx) => (
-                <div key={idx} className="p-5 border border-slate-200 rounded-xl bg-slate-50 hover:bg-white hover:border-blue-500 hover:shadow-md transition-all group flex items-center gap-4">
-                  <div className="w-12 h-12 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-blue-600 font-bold group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                    {idx + 1}
-                  </div>
-                  <span className="font-bold text-slate-700 group-hover:text-slate-900">{sub}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* 2. COURSES TAB */}
+        {activeTab === 'courses' && (
+           <div className="animate-fadeIn">
+              <div className="bg-white p-8 rounded-2xl shadow-soft border border-slate-200">
+                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><BookOpen className="text-blue-600"/> Registered Courses</h2>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {profile?.subjects?.map((sub, i) => (
+                       <div key={i} className="p-4 border border-slate-200 rounded-xl bg-slate-50 hover:bg-white hover:border-blue-500 hover:shadow-md transition flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white border rounded-lg flex items-center justify-center text-blue-600 font-bold">{i+1}</div>
+                          <span className="font-bold text-slate-700">{sub}</span>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           </div>
         )}
 
-        {activeTab === 'report' && !isAccountLocked && (
-          <div className="bg-white p-8 rounded-2xl shadow-soft border border-slate-200 animate-fadeIn">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                <FileCheck className="text-blue-600"/> Academic Report Card
-              </h2>
-              <button 
-                onClick={handleReportPrint} 
-                disabled={results.length === 0}
-                className={`px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition ${
-                  results.length === 0 
-                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                <Printer size={18}/> Print Report Card
-              </button>
-            </div>
-            
-            {results.length === 0 ? (
-              <div className="text-center py-12">
-                <FileCheck size={48} className="mx-auto text-slate-300 mb-4"/>
-                <h3 className="text-lg font-bold text-slate-600 mb-2">No Results Available</h3>
-                <p className="text-slate-500">Your academic results will appear here once they are uploaded by your instructors.</p>
+        {/* 3. REPORT CARD TAB (Session Grouped) */}
+        {activeTab === 'report' && (
+           <div className="space-y-8 animate-fadeIn">
+              <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                 <h2 className="font-bold text-lg flex items-center gap-2"><FileCheck className="text-green-600"/> Academic Records</h2>
+                 <button onClick={handleReportPrint} disabled={results.length===0} className="btn-primary text-sm flex items-center gap-2 py-2">
+                    <Printer size={16}/> Print Report
+                 </button>
               </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                    <div className="text-sm text-blue-600 mb-2">Average Score</div>
-                    <div className="text-3xl font-black text-blue-900">{calculateAverage()}%</div>
-                  </div>
-                  <div className="bg-green-50 p-6 rounded-xl border border-green-100">
-                    <div className="text-sm text-green-600 mb-2">Total Subjects</div>
-                    <div className="text-3xl font-black text-green-900">{results.length}</div>
-                  </div>
-                  <div className={`p-6 rounded-xl border ${calculateAverage() >= 40 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-                    <div className="text-sm mb-2">Performance Status</div>
-                    <div className={`text-2xl font-black ${calculateAverage() >= 40 ? 'text-green-700' : 'text-red-700'}`}>
-                      {calculateAverage() >= 40 ? 'PROMOTED' : 'REPEATING'}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-100 text-slate-600 uppercase text-xs font-bold">
-                      <tr>
-                        <th className="p-4 border border-slate-300">Subject</th>
-                        <th className="p-4 border border-slate-300 text-center">CA (40)</th>
-                        <th className="p-4 border border-slate-300 text-center">Exam (60)</th>
-                        <th className="p-4 border border-slate-300 text-center">Total</th>
-                        <th className="p-4 border border-slate-300 text-center">Grade</th>
-                        <th className="p-4 border border-slate-300">Remark</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {results.map((res) => (
-                        <tr key={res.id} className="hover:bg-slate-50 transition">
-                          <td className="p-4 border border-slate-300 font-bold">{res.subject}</td>
-                          <td className="p-4 border border-slate-300 text-center">{res.ca_score}</td>
-                          <td className="p-4 border border-slate-300 text-center">{res.exam_score}</td>
-                          <td className="p-4 border border-slate-300 text-center font-bold">{res.total_score}</td>
-                          <td className={`p-4 border border-slate-300 text-center font-bold ${
-                            res.grade === 'A' ? 'text-green-600' : 
-                            res.grade === 'B' ? 'text-blue-600' : 
-                            res.grade === 'C' ? 'text-yellow-600' : 
-                            res.grade === 'F' ? 'text-red-600' : 'text-slate-600'
-                          }`}>
-                            {res.grade}
-                          </td>
-                          <td className="p-4 border border-slate-300 italic">
-                            {res.grade === 'A' ? 'Excellent' : 
-                             res.grade === 'B' ? 'Very Good' : 
-                             res.grade === 'C' ? 'Good' : 
-                             res.grade === 'D' ? 'Pass' : 
-                             res.grade === 'E' ? 'Fair' : 
-                             'Fail'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'library' && !isAccountLocked && (
-          <LibraryView 
-            user={profile} 
-            role="student" 
-            isAdmin={false} 
-            token={token} 
-          />
-        )}
-
-        {activeTab === 'payments' && !isAccountLocked && (
-          <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden animate-fadeIn">
-            <div className="p-10 text-center">
-              <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
-                <CreditCard size={40} />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Tuition & Fee Payment</h2>
-              <p className="text-slate-500 mb-4 max-w-md mx-auto">
-                Securely pay your acceptance fees and tuition using Flutterwave.
-              </p>
-              
-              <div className="mb-8 bg-blue-50 border border-blue-100 rounded-xl p-6 max-w-md mx-auto">
-                <div className="text-sm text-slate-600 mb-2">Programme Fee ({profile?.program_type})</div>
-                <div className="text-4xl font-black text-blue-900">₦{amount.toLocaleString()}</div>
-                <div className="text-sm text-slate-500 mt-2">
-                  Status: <span className={`font-bold ${isPaymentLocked ? 'text-red-500' : 'text-green-600'}`}>
-                    {isPaymentLocked ? 'UNPAID' : 'PAID'}
-                  </span>
-                </div>
-              </div>
-              
-              {isPaymentLocked ? (
-                <button 
-                  onClick={initiatePayment}
-                  className="bg-blue-900 text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-blue-800 transition shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
-                >
-                  Pay ₦{amount.toLocaleString()} via Flutterwave
-                </button>
+              {results.length === 0 ? (
+                 <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
+                    <FileCheck size={48} className="mx-auto text-slate-300 mb-4"/>
+                    <p className="text-slate-500">No results uploaded yet.</p>
+                 </div>
               ) : (
-                <div className="bg-green-50 border border-green-200 text-green-800 px-8 py-4 rounded-xl inline-flex items-center gap-3 font-bold">
-                  <CheckCircle size={24}/> Payment Complete. Thank you!
-                </div>
+                 Object.entries(groupedResults).map(([sessionTitle, sessionResults]) => (
+                    <div key={sessionTitle} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                       <div className="bg-slate-900 text-white p-4 px-6 flex justify-between items-center">
+                          <h3 className="font-bold">{sessionTitle}</h3>
+                          <span className="text-xs bg-slate-700 px-3 py-1 rounded-full">{sessionResults.length} Courses</span>
+                       </div>
+                       <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-50 font-bold border-b text-slate-600">
+                             <tr>
+                                <th className="p-4">Subject</th>
+                                <th className="p-4 text-center">CA</th>
+                                <th className="p-4 text-center">Exam</th>
+                                <th className="p-4 text-center">Total</th>
+                                <th className="p-4 text-center">Grade</th>
+                                <th className="p-4 text-center">Remark</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                             {sessionResults.map((r, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                   <td className="p-4 font-bold text-slate-800">{r.subject}</td>
+                                   <td className="p-4 text-center text-slate-500">{r.ca_score}</td>
+                                   <td className="p-4 text-center text-slate-500">{r.exam_score}</td>
+                                   <td className="p-4 text-center font-black text-slate-900">{r.total_score}</td>
+                                   <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${r.grade === 'F' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{r.grade}</span></td>
+                                   <td className="p-4 text-center text-xs text-slate-500 italic">{r.grade === 'F' ? 'Fail' : 'Pass'}</td>
+                                </tr>
+                             ))}
+                          </tbody>
+                       </table>
+                    </div>
+                 ))
               )}
-            </div>
-          </div>
+           </div>
+        )}
+
+        {/* 4. PAYMENTS TAB */}
+        {activeTab === 'payments' && (
+           <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden animate-fadeIn">
+              <div className="p-10 text-center">
+                 <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <CreditCard size={40}/>
+                 </div>
+                 <h2 className="text-2xl font-bold text-slate-900 mb-2">Tuition Payment</h2>
+                 <p className="text-slate-500 mb-8 text-sm">Session 2025/2026 • {profile?.program_type}</p>
+                 
+                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8">
+                    <p className="text-sm text-slate-500 uppercase tracking-wider mb-1">Total Fee</p>
+                    <p className="text-4xl font-black text-slate-900">₦{amount.toLocaleString()}</p>
+                    <div className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold ${isPaymentLocked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                       {isPaymentLocked ? <AlertCircle size={14}/> : <CheckCircle size={14}/>}
+                       {isPaymentLocked ? 'PAYMENT PENDING' : 'CLEARED'}
+                    </div>
+                 </div>
+
+                 {isPaymentLocked ? (
+                    <button onClick={initiatePayment} className="w-full bg-blue-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-800 shadow-lg transition transform hover:-translate-y-1">
+                       Pay Now with Flutterwave
+                    </button>
+                 ) : (
+                    <div className="text-green-600 font-bold flex items-center justify-center gap-2">
+                       <CheckCircle size={20}/> Payment Complete. Access Granted.
+                    </div>
+                 )}
+              </div>
+           </div>
+        )}
+
+        {/* 5. LIBRARY TAB */}
+        {activeTab === 'library' && (
+           <div className="animate-fadeIn">
+              <LibraryView user={profile} role="student" isAdmin={false} token={token} />
+           </div>
         )}
 
       </main>
 
-      {!isPaymentLocked && (
-        <div style={{ display: "none" }}>
-          <AdmissionLetter ref={admissionPrintRef} student={profile} />
-        </div>
+      {/* Hidden Print Components */}
+      {!isFeatureLocked && (
+         <>
+           <div style={{ display: "none" }}><AdmissionLetter ref={admissionPrintRef} student={profile} /></div>
+           <div style={{ display: "none" }}><ReportCard ref={reportPrintRef} student={profile} results={results} /></div>
+         </>
       )}
-      
-      <div style={{ display: "none" }}>
-        <ReportCard ref={reportPrintRef} student={profile} results={results} />
-      </div>
     </div>
   );
 };
 
+// --- SUB COMPONENTS ---
+
 const SidebarItem = ({ icon, label, active, onClick, locked }) => (
   <button 
-    onClick={onClick}
+    onClick={onClick} 
     disabled={locked}
-    className={`flex items-center gap-3 px-4 py-3.5 rounded-xl w-full text-left transition-all duration-200 group mb-1 ${
-      locked ? 'text-blue-400 cursor-not-allowed opacity-60' :
-      active ? 'bg-blue-500 text-white shadow-lg' : 
-      'text-blue-100 hover:bg-blue-800 hover:text-white'
-    }`}
+    className={`
+      flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-200 mb-1 group
+      ${active ? 'bg-blue-500 text-white shadow-lg' : 'text-blue-100 hover:bg-blue-800 hover:text-white'}
+      ${locked ? 'opacity-50 cursor-not-allowed' : ''}
+    `}
   >
-    <div className={`transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
-      {icon} 
-    </div>
-    <span className="font-medium flex-1">{label}</span>
-    {locked && <Lock size={14} className="text-blue-400"/>}
+    <div className={`transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</div>
+    <span className="font-medium text-sm flex-1">{label}</span>
+    {locked && <Lock size={14} className="text-blue-300"/>}
     {active && !locked && <ChevronRight size={16} className="opacity-50"/>}
   </button>
 );
+
+const StatusBadge = ({ icon: Icon, label, color }) => {
+  const colors = {
+    green: 'bg-green-50 text-green-700 border-green-200',
+    red: 'bg-red-50 text-red-700 border-red-200',
+    orange: 'bg-orange-50 text-orange-700 border-orange-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200'
+  };
+  return (
+    <div className={`px-4 py-2 rounded-xl border flex items-center gap-2 ${colors[color]}`}>
+      <Icon size={16} />
+      <div>
+        <span className="block text-[10px] uppercase font-bold opacity-70">Status</span>
+        <span className="block text-xs font-bold">{label}</span>
+      </div>
+    </div>
+  );
+};
 
 export default StudentDashboard;

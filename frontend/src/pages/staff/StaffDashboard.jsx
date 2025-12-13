@@ -5,7 +5,7 @@ import { api } from '../../lib/api';
 import { 
   LayoutDashboard, Users, FileCheck, LogOut, Search, 
   Menu, X, Loader2, Save, BookOpen, RefreshCw, 
-  Calendar, Bell, Send, ExternalLink, CheckCircle, AlertTriangle
+  Calendar, Bell, Send, ExternalLink
 } from 'lucide-react';
 
 const StaffDashboard = () => {
@@ -28,7 +28,8 @@ const StaffDashboard = () => {
 
   // --- RESULT MANAGEMENT STATE ---
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [studentResults, setStudentResults] = useState([]); // <--- NEW: To show history
+  const [studentResults, setStudentResults] = useState([]); 
+  const [availableSubjects, setAvailableSubjects] = useState([]); // Dynamic subjects
   const [scoreData, setScoreData] = useState({
     subject: '',
     ca: '',
@@ -63,10 +64,8 @@ const StaffDashboard = () => {
   const loadInitialData = async () => {
     setRefreshing(true);
     try {
-      console.log("Fetching Staff Data...");
-      
-      // 1. Fetch Students (Using the admin endpoint for now, or specific staff endpoint)
-      // Note: If this fails with 403, we need to ensure the backend route allows staff
+      // 1. Fetch Students
+      // We fetch all, but we will FILTER them strictly by department below
       const studentsData = await api.get('/schmngt/students'); 
       
       // 2. Fetch Settings (For Session)
@@ -76,14 +75,20 @@ const StaffDashboard = () => {
       // 3. Fetch Broadcasts
       const msgs = await api.get('/students/announcements');
 
-      // Filter students by Staff Department (if applicable)
-      // If user.department is "General", show all. Else filter.
-      const myStudents = (user.department && user.department !== 'General')
-        ? studentsData.filter(s => s.department === user.department || s.department === 'General')
-        : studentsData;
+      // --- CRITICAL FIX: DEPARTMENT FILTERING ---
+      // Staff can ONLY see students in their own department
+      const staffDept = user.department; 
+      
+      let myStudents = [];
+      if (staffDept) {
+         myStudents = studentsData.filter(s => s.department === staffDept);
+      } else {
+         // Fallback if staff has no department set (rare)
+         myStudents = [];
+      }
 
-      setStudents(myStudents || []);
-      setFilteredStudents(myStudents || []);
+      setStudents(myStudents);
+      setFilteredStudents(myStudents);
       setCurrentSession(session);
       setBroadcasts(msgs || []);
 
@@ -99,8 +104,24 @@ const StaffDashboard = () => {
 
   const handleSelectStudent = (student) => {
     setSelectedStudent(student);
-    setScoreData({ subject: '', ca: '', exam: '', term: 'First Term' }); // Reset form
-    fetchStudentResults(student.id); // Load history
+    
+    // --- CRITICAL FIX: DYNAMIC SUBJECTS ---
+    // Parse the JSONB subjects to an array
+    let subs = [];
+    if (Array.isArray(student.subjects)) {
+      subs = student.subjects;
+    } else if (typeof student.subjects === 'string') {
+      try { subs = JSON.parse(student.subjects); } catch(e) { subs = []; }
+    }
+    
+    if (subs.length === 0) {
+       // Fallback only if student has no registered subjects
+       subs = ['Mathematics', 'English']; 
+    }
+    
+    setAvailableSubjects(subs);
+    setScoreData({ subject: '', ca: '', exam: '', term: 'First Term' }); 
+    fetchStudentResults(student.id);
   };
 
   const fetchStudentResults = async (studentId) => {
@@ -130,10 +151,9 @@ const StaffDashboard = () => {
       
       alert(`Result for ${scoreData.subject} saved successfully!`);
       
-      // Refresh the history table immediately
       await fetchStudentResults(selectedStudent.id);
       
-      // Clear scores for next entry, keep subject/term for speed
+      // Clear scores for next entry
       setScoreData(prev => ({ ...prev, ca: '', exam: '' }));
 
     } catch (err) {
@@ -144,14 +164,16 @@ const StaffDashboard = () => {
   };
 
   const handleEditResult = (result) => {
-    // Load data back into form
     setScoreData({
       subject: result.subject,
       ca: result.ca_score,
       exam: result.exam_score,
       term: result.term
     });
-    // Scroll to top of form
+    // Ensure the subject is available in the list so it displays correctly
+    if (!availableSubjects.includes(result.subject)) {
+        setAvailableSubjects(prev => [...prev, result.subject]);
+    }
     document.getElementById('result-form').scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -162,13 +184,12 @@ const StaffDashboard = () => {
       await api.post('/schmngt/broadcast', { ...newMsg, target: 'student' });
       alert("Message Sent to Students!");
       setNewMsg({ title: '', message: '' });
-      loadInitialData(); // Refresh list
+      loadInitialData();
     } catch (err) {
       alert("Failed to send: " + err.message);
     }
   };
 
-  // --- RENDER ---
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       <Loader2 className="w-12 h-12 animate-spin text-purple-700 mb-4"/>
@@ -196,8 +217,8 @@ const StaffDashboard = () => {
 
         <nav className="flex-1 p-4 space-y-2 mt-4 overflow-y-auto">
           <TabBtn icon={<LayoutDashboard/>} label="Overview" active={activeTab==='overview'} expanded={sidebarOpen} onClick={()=>setActiveTab('overview')} />
+          <TabBtn icon={<FileCheck/>} label="Manage Results" active={activeTab==='results'} expanded={sidebarOpen} onClick={()=>setActiveTab('results')} />
           <TabBtn icon={<Users/>} label="My Students" active={activeTab==='students'} expanded={sidebarOpen} onClick={()=>setActiveTab('students')} />
-          <TabBtn icon={<FileCheck/>} label="Results Entry" active={activeTab==='results'} expanded={sidebarOpen} onClick={()=>setActiveTab('results')} />
           <TabBtn icon={<Calendar/>} label="Timetable" active={activeTab==='timetable'} expanded={sidebarOpen} onClick={()=>setActiveTab('timetable')} />
           <TabBtn icon={<Bell/>} label="Broadcasts" active={activeTab==='broadcast'} expanded={sidebarOpen} onClick={()=>setActiveTab('broadcast')} />
         </nav>
@@ -258,7 +279,6 @@ const StaffDashboard = () => {
         {/* --- STUDENTS TAB --- */}
         {activeTab === 'students' && (
           <div className="space-y-6 animate-fadeIn">
-             {/* Search */}
              <div className="flex gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                 <div className="relative flex-1">
                    <Search className="absolute left-4 top-3.5 text-slate-400" size={20}/>
@@ -271,7 +291,6 @@ const StaffDashboard = () => {
                 </div>
              </div>
 
-             {/* Table */}
              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <table className="w-full text-left text-sm">
                    <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
@@ -280,12 +299,11 @@ const StaffDashboard = () => {
                          <th className="p-5">Student ID</th>
                          <th className="p-5">Program</th>
                          <th className="p-5">Phone</th>
-                         <th className="p-5">Status</th>
                       </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100">
                       {filteredStudents.length === 0 ? (
-                         <tr><td colSpan="5" className="p-8 text-center text-slate-500">No students found.</td></tr>
+                         <tr><td colSpan="4" className="p-8 text-center text-slate-500">No students found in your department.</td></tr>
                       ) : (
                          filteredStudents.map(s => (
                             <tr key={s.id} className="hover:bg-purple-50 transition-colors">
@@ -293,11 +311,6 @@ const StaffDashboard = () => {
                                <td className="p-5 font-mono text-xs text-slate-500">{s.student_id_text}</td>
                                <td className="p-5 text-slate-700">{s.program_type}</td>
                                <td className="p-5 text-slate-600">{s.phone_number}</td>
-                               <td className="p-5">
-                                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${s.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                     {s.payment_status || 'Pending'}
-                                  </span>
-                               </td>
                             </tr>
                          ))
                       )}
@@ -311,7 +324,7 @@ const StaffDashboard = () => {
         {activeTab === 'results' && (
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-fadeIn">
             
-            {/* 1. Student Selector (Left Side) */}
+            {/* 1. Student Selector */}
             <div className="xl:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-[700px] flex flex-col">
               <h3 className="font-bold mb-4 text-lg border-b pb-4 text-slate-800">1. Select Student</h3>
               <div className="relative mb-4">
@@ -331,13 +344,13 @@ const StaffDashboard = () => {
                     className={`p-3 rounded-xl cursor-pointer transition border ${selectedStudent?.id === s.id ? 'bg-purple-50 border-purple-500 ring-1 ring-purple-500' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
                   >
                     <div className="font-bold text-slate-900">{s.surname} {s.first_name}</div>
-                    <div className="text-xs text-slate-500 font-mono mt-1">{s.student_id_text} • {s.program_type}</div>
+                    <div className="text-xs text-slate-500 font-mono mt-1">{s.student_id_text}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* 2. Upload Form & History (Right Side) */}
+            {/* 2. Upload Form & History */}
             <div className="xl:col-span-8 space-y-6">
                
                {/* Upload Form */}
@@ -354,7 +367,7 @@ const StaffDashboard = () => {
                   <form onSubmit={handleUpload} className="space-y-6">
                      <div className="grid grid-cols-2 gap-6">
                         <div>
-                           <label className="label-text">Term / Semester</label>
+                           <label className="label-text">Term</label>
                            <select className="input-field w-full" value={scoreData.term} onChange={e => setScoreData({...scoreData, term: e.target.value})}>
                               <option>First Term</option>
                               <option>Second Term</option>
@@ -370,19 +383,10 @@ const StaffDashboard = () => {
                               required
                               disabled={!selectedStudent}
                            >
-                              <option value="">-- Select Subject --</option>
-                              {/* Merge student registered subjects with common ones */}
-                              {(selectedStudent?.subjects || []).map((sub, i) => <option key={i} value={sub}>{sub}</option>)}
-                              <option disabled>──────────</option>
-                              <option>Mathematics</option>
-                              <option>English Language</option>
-                              <option>Biology</option>
-                              <option>Economics</option>
-                              <option>Physics</option>
-                              <option>Chemistry</option>
-                              <option>Government</option>
-                              <option>Literature</option>
-                              <option>CRS/IRS</option>
+                              <option value="">-- Select Student's Course --</option>
+                              {availableSubjects.map((sub, i) => (
+                                <option key={i} value={sub}>{sub}</option>
+                              ))}
                            </select>
                         </div>
                      </div>
@@ -399,12 +403,12 @@ const StaffDashboard = () => {
                      </div>
 
                      <button type="submit" disabled={uploading || !selectedStudent} className="w-full bg-purple-700 hover:bg-purple-800 text-white font-bold py-4 rounded-xl transition flex justify-center gap-2 shadow-lg">
-                        {uploading ? <Loader2 className="animate-spin"/> : <><Save size={20}/> Save Result to Database</>}
+                        {uploading ? <Loader2 className="animate-spin"/> : <><Save size={20}/> Save Result</>}
                      </button>
                   </form>
                </div>
 
-               {/* History Table (NEW FEATURE) */}
+               {/* History Table */}
                {selectedStudent && (
                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fadeIn">
                     <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">

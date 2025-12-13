@@ -1,7 +1,4 @@
-{
-type: "file_content_replacement",
-fileName: "uhhghhujbh/merit-school-portal/merit-school-portal-a4a74196d9139b068ba5538c081690a51cba6ee2/frontend/src/pages/student/StudentDashboard.jsx",
-fullContent: `import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
@@ -579,5 +576,3 @@ const StatusBadge = ({ icon: Icon, label, color }) => {
 };
 
 export default StudentDashboard;
-`
-}

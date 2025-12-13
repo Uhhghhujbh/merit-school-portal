@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-// --- AUTH PAGES (Login) ---
+// --- AUTH PAGES (Login) --- 
 import LoginSelection from './pages/auth/LoginSelection';
 import AdminLogin from './pages/auth/AdminLogin';
 import StudentLogin from './pages/auth/StudentLogin';

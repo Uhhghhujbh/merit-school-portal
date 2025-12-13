@@ -8,7 +8,7 @@ import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
 import { 
   LayoutDashboard, BookOpen, CreditCard, User, LogOut, 
   Bell, Calendar, Lock, AlertCircle, CheckCircle, ExternalLink, 
-  Printer, Shield, Menu, X, FileText, ChevronRight, Book, FileCheck, Download, Share2, AlertTriangle, Loader2
+  Printer, Shield, Menu, X, FileText, Book, FileCheck, Download, Share2, AlertTriangle, Loader2
 } from 'lucide-react';
 import AdmissionLetter from '../../components/shared/AdmissionLetter';
 import LibraryView from '../../components/shared/LibraryView';
@@ -25,10 +25,10 @@ const StudentDashboard = () => {
   const [fees, setFees] = useState({ fee_jamb: 0, fee_alevel: 0, fee_olevel: 0 });
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // --- REFS ---
+  // --- REFS FOR PRINTING ---
   const admissionPrintRef = useRef();
   const reportPrintRef = useRef();
   
@@ -46,26 +46,26 @@ const StudentDashboard = () => {
   });
 
   // --- DOWNLOAD HANDLERS ---
-  const handleAdmissionDownload = async () => {
+  const handleDownload = async (ref, filename) => {
     try {
-      if(!admissionPrintRef.current) return;
-      const canvas = await html2canvas(admissionPrintRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 850 });
+      if(!ref.current) return;
+      const canvas = await html2canvas(ref.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 850 });
       const link = document.createElement('a');
-      link.download = `Admission_${profile?.surname}.png`;
+      link.download = `${filename}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-    } catch (err) { alert('Download failed. Try Print PDF.'); }
+    } catch (err) { alert('Download failed. Please try Printing to PDF instead.'); }
   };
 
-  const handleAdmissionShare = async () => {
+  const handleShare = async (ref, title) => {
     try {
-      if(!admissionPrintRef.current) return;
-      const canvas = await html2canvas(admissionPrintRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      if(!ref.current) return;
+      const canvas = await html2canvas(ref.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
       canvas.toBlob(async (blob) => {
-        const file = new File([blob], `Admission_${profile?.surname}.png`, { type: 'image/png' });
+        const file = new File([blob], `${title}.png`, { type: 'image/png' });
         if (navigator.share && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: 'Admission Letter' });
-        } else { alert('Share not supported.'); }
+          await navigator.share({ files: [file], title: title });
+        } else { alert('Share not supported on this device.'); }
       });
     } catch (err) { alert('Share failed.'); }
   };
@@ -80,6 +80,7 @@ const StudentDashboard = () => {
     setRefreshing(true);
     try {
       if (user?.id) {
+        // Parallel Fetch for Speed
         const [profileData, msgData, feeData, resultsData] = await Promise.all([
           api.get(`/students/profile/${user.id}`, token),
           api.get(`/students/announcements`, token),
@@ -94,7 +95,6 @@ const StudentDashboard = () => {
       }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
-      // Don't crash, just show empty states
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -144,10 +144,10 @@ const StudentDashboard = () => {
               student_id: user.id
             }, token);
             
-            alert("Payment Successful! Refreshing...");
-            loadDashboardData(); // Auto-refresh to unlock
+            alert("Payment Successful! Refreshing your dashboard...");
+            loadDashboardData(); // Auto-refresh to unlock features
           } catch (err) {
-            alert("Payment verification pending. Contact admin.");
+            alert("Payment completed but verification pending. Please contact admin.");
           }
         }
       },
@@ -159,17 +159,17 @@ const StudentDashboard = () => {
   const openTimetable = () => window.open('https://meritstudenttimetable.vercel.app', '_blank');
   
   const handleLogout = () => {
-    if (window.confirm('Logout?')) { logout(); navigate('/'); }
+    if (window.confirm('Are you sure you want to sign out?')) { logout(); navigate('/'); }
   };
 
   // --- LOCK LOGIC ---
   const isAccountLocked = !profile?.is_validated;
   const isPaymentLocked = profile?.payment_status !== 'paid';
-  const isFeatureLocked = isAccountLocked || isPaymentLocked; // Master Lock
+  const isFeatureLocked = isAccountLocked || isPaymentLocked; 
 
-  // Group Results
+  // --- DATA PROCESSING ---
   const groupedResults = results.reduce((groups, r) => {
-    const key = `${r.session} - ${r.term}`; // "2025/2026 - First Term"
+    const key = `${r.session} - ${r.term}`; // e.g. "2025/2026 - First Term"
     if (!groups[key]) groups[key] = [];
     groups[key].push(r);
     return groups;
@@ -177,7 +177,7 @@ const StudentDashboard = () => {
 
   const calculateAverage = () => {
     if (!results || results.length === 0) return 0;
-    const total = results.reduce((acc, curr) => acc + curr.total_score, 0);
+    const total = results.reduce((acc, curr) => acc + (Number(curr.total_score) || 0), 0);
     return (total / results.length).toFixed(1);
   };
 
@@ -185,7 +185,7 @@ const StudentDashboard = () => {
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       <Loader2 className="animate-spin w-12 h-12 text-blue-900 mb-4"/>
-      <p className="text-slate-600 font-medium">Loading Student Portal...</p>
+      <p className="text-slate-600 font-medium animate-pulse">Loading Student Portal...</p>
     </div>
   );
 
@@ -232,7 +232,7 @@ const StudentDashboard = () => {
               icon={<Calendar size={20}/>} 
               label="Timetable" 
               active={activeTab === 'timetable'} 
-              onClick={openTimetable} // Always allow click, check lock inside function if needed, but usually external link
+              onClick={openTimetable} 
               locked={isFeatureLocked}
             />
             <SidebarItem 
@@ -257,7 +257,7 @@ const StudentDashboard = () => {
               icon={<CreditCard size={20}/>} 
               label="Tuition & Fees" 
               active={activeTab === 'payments'} 
-              onClick={() => setActiveTab('payments')} // Always accessible so they can pay
+              onClick={() => setActiveTab('payments')} 
             />
           </div>
         </nav>
@@ -266,7 +266,12 @@ const StudentDashboard = () => {
         <div className="p-4 border-t border-blue-800 bg-blue-950">
            <div className="flex items-center gap-3 mb-4 p-2 bg-blue-900 rounded-xl border border-blue-800">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl font-bold text-blue-700 overflow-hidden">
-                 {profile?.photo_url ? <img src={profile.photo_url} className="w-full h-full object-cover"/> : profile?.surname?.charAt(0)}
+                 {/* USE SUPABASE IMAGE OR FALLBACK */}
+                 {profile?.photo_url ? (
+                    <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" />
+                 ) : (
+                    profile?.surname?.charAt(0)
+                 )}
               </div>
               <div className="overflow-hidden">
                  <p className="font-bold text-sm truncate w-32">{profile?.surname} {profile?.first_name}</p>
@@ -280,15 +285,15 @@ const StudentDashboard = () => {
       </aside>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 p-4 md:p-8 h-screen overflow-y-auto bg-slate-50">
+      <main className="flex-1 p-4 md:p-8 mt-16 md:mt-0 overflow-y-auto h-screen bg-slate-50">
         
         {/* Mobile Header */}
-        <div className="md:hidden flex justify-between items-center mb-6">
+        <div className="md:hidden fixed top-0 left-0 w-full bg-blue-900 text-white z-30 flex justify-between items-center p-4 shadow-md">
            <div className="flex items-center gap-2">
-              <img src="/meritlogo.jpg" className="w-8 h-8 rounded-full" />
-              <span className="font-bold text-slate-800">MCAS</span>
+              <img src="/meritlogo.jpg" className="w-8 h-8 rounded-full bg-white p-0.5" />
+              <span className="font-bold">MCAS</span>
            </div>
-           <button onClick={() => setSidebarOpen(true)} className="p-2 bg-white rounded shadow-sm"><Menu/></button>
+           <button onClick={() => setSidebarOpen(true)} className="p-2"><Menu/></button>
         </div>
 
         {/* Desktop Header */}
@@ -333,13 +338,13 @@ const StudentDashboard = () => {
                  )}
 
                  {/* Admission Letter Card */}
-                 <div className={`bg-white p-8 rounded-2xl shadow-soft border border-slate-200 relative overflow-hidden ${isFeatureLocked ? 'opacity-70 pointer-events-none grayscale' : ''}`}>
+                 <div className={`bg-white p-8 rounded-2xl shadow-soft border border-slate-200 relative overflow-hidden ${isFeatureLocked ? 'opacity-60 pointer-events-none grayscale' : ''}`}>
                     <div className="absolute top-0 right-0 p-6 opacity-5"><FileText size={120}/></div>
                     <h3 className="font-bold text-xl text-slate-900 mb-2">Admission Letter</h3>
                     <p className="text-slate-500 mb-6 max-w-md">Download your official provisional admission letter for the 2025/2026 academic session.</p>
                     <div className="flex flex-wrap gap-3">
                        <button onClick={handleAdmissionPrint} className="btn-primary flex items-center gap-2"><Printer size={18}/> Print PDF</button>
-                       <button onClick={handleAdmissionDownload} className="btn-secondary flex items-center gap-2"><Download size={18}/> Download</button>
+                       <button onClick={() => handleDownload(admissionPrintRef, `Admission_${profile?.surname}`)} className="btn-secondary flex items-center gap-2"><Download size={18}/> Download</button>
                     </div>
                  </div>
 
@@ -347,9 +352,9 @@ const StudentDashboard = () => {
                  <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
                     <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Bell className="text-blue-600" size={18}/> Announcements</h3>
-                       <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{announcements.length}</span>
+                       <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{announcements.length} New</span>
                     </div>
-                    <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                    <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto custom-scrollbar">
                        {announcements.length === 0 ? <p className="p-6 text-center text-slate-400">No news yet.</p> : 
                         announcements.map(msg => (
                            <div key={msg.id} className="p-6 hover:bg-slate-50 transition">
@@ -368,8 +373,13 @@ const StudentDashboard = () => {
                  <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
                     <div className="bg-gradient-to-br from-blue-900 to-blue-800 h-24 relative">
                        <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2">
-                          <div className="w-20 h-20 bg-white p-1 rounded-full shadow-lg">
-                             <img src={profile?.photo_url || "/meritlogo.jpg"} className="w-full h-full rounded-full object-cover bg-slate-100" />
+                          <div className="w-20 h-20 bg-white p-1 rounded-full shadow-lg flex items-center justify-center overflow-hidden">
+                             {/* PROFILE IMAGE OR DEFAULT */}
+                             {profile?.photo_url ? (
+                                <img src={profile.photo_url} className="w-full h-full object-cover" />
+                             ) : (
+                                <img src="/meritlogo.jpg" className="w-full h-full object-cover opacity-50" />
+                             )}
                           </div>
                        </div>
                     </div>
@@ -392,7 +402,7 @@ const StudentDashboard = () => {
               <div className="bg-white p-8 rounded-2xl shadow-soft border border-slate-200">
                  <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><BookOpen className="text-blue-600"/> Registered Courses</h2>
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {profile?.subjects?.map((sub, i) => (
+                    {(profile?.subjects || []).map((sub, i) => (
                        <div key={i} className="p-4 border border-slate-200 rounded-xl bg-slate-50 hover:bg-white hover:border-blue-500 hover:shadow-md transition flex items-center gap-4">
                           <div className="w-10 h-10 bg-white border rounded-lg flex items-center justify-center text-blue-600 font-bold">{i+1}</div>
                           <span className="font-bold text-slate-700">{sub}</span>
@@ -408,9 +418,10 @@ const StudentDashboard = () => {
            <div className="space-y-8 animate-fadeIn">
               <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                  <h2 className="font-bold text-lg flex items-center gap-2"><FileCheck className="text-green-600"/> Academic Records</h2>
-                 <button onClick={handleReportPrint} disabled={results.length===0} className="btn-primary text-sm flex items-center gap-2 py-2">
-                    <Printer size={16}/> Print Report
-                 </button>
+                 <div className="flex gap-2">
+                    <button onClick={handleReportPrint} disabled={results.length===0} className="btn-primary text-sm flex items-center gap-2 py-2"><Printer size={16}/> Print Report</button>
+                    <button onClick={() => handleDownload(reportPrintRef, `Report_${profile?.surname}`)} disabled={results.length===0} className="btn-secondary text-sm flex items-center gap-2 py-2"><Download size={16}/> Save Image</button>
+                 </div>
               </div>
 
               {results.length === 0 ? (
@@ -443,7 +454,7 @@ const StudentDashboard = () => {
                                    <td className="p-4 text-center text-slate-500">{r.ca_score}</td>
                                    <td className="p-4 text-center text-slate-500">{r.exam_score}</td>
                                    <td className="p-4 text-center font-black text-slate-900">{r.total_score}</td>
-                                   <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${r.grade === 'F' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{r.grade}</span></td>
+                                   <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${['F'].includes(r.grade) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{r.grade}</span></td>
                                    <td className="p-4 text-center text-xs text-slate-500 italic">{r.grade === 'F' ? 'Fail' : 'Pass'}</td>
                                 </tr>
                              ))}
@@ -496,11 +507,15 @@ const StudentDashboard = () => {
 
       </main>
 
-      {/* Hidden Print Components */}
+      {/* --- HIDDEN PRINT COMPONENTS --- */}
       {!isFeatureLocked && (
          <>
-           <div style={{ display: "none" }}><AdmissionLetter ref={admissionPrintRef} student={profile} /></div>
-           <div style={{ display: "none" }}><ReportCard ref={reportPrintRef} student={profile} results={results} /></div>
+           <div style={{ display: "none" }}>
+             <AdmissionLetter ref={admissionPrintRef} student={profile} />
+           </div>
+           <div style={{ display: "none" }}>
+             <ReportCard ref={reportPrintRef} student={profile} results={results} />
+           </div>
          </>
       )}
     </div>

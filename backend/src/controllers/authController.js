@@ -30,7 +30,50 @@ async function uploadPhoto(base64Data, userId) {
   }
 }
 
-// LOGIN
+// --- ADMIN LOGIN (NEW FIX) ---
+exports.adminLogin = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    // 1. Authenticate with Supabase Auth
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) return res.status(401).json({ error: 'Invalid Email or Password' });
+
+    // 2. CHECK ALLOWLIST (The Critical Fix)
+    const { data: adminEntry, error: allowError } = await supabase
+      .from('admin_allowlist')
+      .select('email')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!adminEntry) {
+      // If not in allowlist, sign them out immediately
+      await supabase.auth.signOut();
+      return res.status(403).json({ error: 'Access Denied: You are not an Administrator.' });
+    }
+
+    // 3. Success - Return Admin Role
+    res.json({
+      message: 'Admin Login Successful',
+      token: data.session.access_token,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        role: 'admin' // Explicitly send this so frontend knows
+      }
+    });
+
+  } catch (err) {
+    console.error("Admin Login Error:", err);
+    res.status(500).json({ error: 'Server Error' });
+  }
+};
+
+// --- STUDENT LOGIN ---
 exports.studentLogin = async (req, res) => {
   const { identifier, password } = req.body;
   try {
@@ -77,7 +120,7 @@ exports.studentLogin = async (req, res) => {
   }
 };
 
-// REGISTRATION
+// --- REGISTER STUDENT ---
 exports.registerStudent = async (req, res) => {
   const clean = (val) => (val && val.trim() !== "" ? val : null);
 
@@ -170,7 +213,7 @@ exports.registerStudent = async (req, res) => {
   } catch (error) {
     console.error("Registration Error:", error);
     // Clean up if auth user was created but DB failed
-    if (error.message.includes("Database")) {
+    if (error.message.includes("Database") && userId) {
        // Optional: await supabase.auth.admin.deleteUser(userId);
     }
     res.status(400).json({ error: error.message });

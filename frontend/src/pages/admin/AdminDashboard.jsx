@@ -1,7 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+{
+type: "file_content_replacement",
+fileName: "uhhghhujbh/merit-school-portal/merit-school-portal-675c0c3d49e75d4a1e42401987f35491d5dd079e/frontend/src/pages/admin/AdminDashboard.jsx",
+fullContent: `import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
-import { createClient } from '@supabase/supabase-js';
+// REMOVED: Unused Supabase client import which caused the issue
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
 import { 
@@ -13,13 +16,9 @@ import {
 import AdmissionLetter from '../../components/shared/AdmissionLetter';
 import LibraryView from '../../components/shared/LibraryView';
 
-// Initialize Supabase Client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 const AdminDashboard = () => {
-  const { login, logout } = useAuthStore();
+  // FIXED: Get user and token directly from store instead of checking Supabase session
+  const { user, token, role, logout } = useAuthStore();
   const navigate = useNavigate();
   
   // --- STATE MANAGEMENT ---
@@ -27,8 +26,6 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [adminToken, setAdminToken] = useState(null);
-  const [adminEmail, setAdminEmail] = useState('');
   
   // --- DATA STATES ---
   const [stats, setStats] = useState(null);
@@ -51,37 +48,22 @@ const AdminDashboard = () => {
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    const initAdmin = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) { 
-        navigate('/auth/admin'); 
-        return; 
-      }
+    // FIXED: Check store authentication instead of supabase.auth.getSession
+    if (!token || !user) {
+      navigate('/auth/admin');
+      return;
+    }
 
-      // Check if user is actually admin
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .single();
+    if (role !== 'admin') {
+      alert("Access Denied: You are not an administrator.");
+      logout(); // Clear invalid session
+      navigate('/auth/admin');
+      return;
+    }
 
-      if (profile?.role !== 'admin') {
-        await supabase.auth.signOut();
-        alert("Access Denied: You are not an administrator.");
-        navigate('/auth/admin');
-        return;
-      }
-
-      setAdminToken(session.access_token);
-      setAdminEmail(session.user.email);
-      login(session.user, session.access_token, 'admin');
-      
-      await loadInitialData(session.access_token);
-    };
-
-    initAdmin();
-  }, [navigate, login]);
+    // If valid, load data using the token
+    loadInitialData(token);
+  }, [token, user, role, navigate, logout]);
 
   // --- SEARCH LOGIC ---
   useEffect(() => {
@@ -99,17 +81,17 @@ const AdminDashboard = () => {
   }, [searchTerm, students]);
 
   // --- DATA LOADING ---
-  const loadInitialData = async (token) => {
+  const loadInitialData = async (authToken) => {
     setRefreshing(true);
     try {
       console.log("Fetching Admin Data...");
       
       // Parallel Data Fetching for Speed
       const [studentsData, statsData, settingsData, logsData] = await Promise.all([
-        api.get('/schmngt/students', token),
-        api.get('/schmngt/dashboard-stats', token),
-        api.get('/schmngt/settings', token),
-        api.get('/activity-logs/all', token)
+        api.get('/schmngt/students', authToken),
+        api.get('/schmngt/dashboard-stats', authToken),
+        api.get('/schmngt/settings', authToken),
+        api.get('/activity-logs/all', authToken)
       ]);
 
       setStudents(studentsData || []);
@@ -120,7 +102,8 @@ const AdminDashboard = () => {
       
     } catch (err) {
       console.error("Admin Data Load Error:", err);
-      if (err.message.includes('401')) {
+      // Only logout if it's strictly an auth error
+      if (err.message && err.message.includes('401')) {
         logout();
         navigate('/auth/admin');
       }
@@ -136,10 +119,10 @@ const AdminDashboard = () => {
     const actionName = action === 'validate' ? (currentValue ? 'Lock' : 'Activate') : 
                        action === 'parent_access' ? (currentValue ? 'Disable Parent' : 'Enable Parent') : 'Update';
     
-    if (!confirm(`Are you sure you want to ${actionName} this student?`)) return;
+    if (!confirm(\`Are you sure you want to \${actionName} this student?\`)) return;
     
     try {
-      await api.post('/schmngt/update-student', { studentId: id, action, value: !currentValue }, adminToken);
+      await api.post('/schmngt/update-student', { studentId: id, action, value: !currentValue }, token);
       // Optimistic Update
       setStudents(prev => prev.map(s => {
         if (s.id !== id) return s;
@@ -151,11 +134,11 @@ const AdminDashboard = () => {
   };
 
   const deleteStudent = async (id) => {
-    const confirmMsg = "⚠️ DANGER: This will PERMANENTLY DELETE the student and ALL their records (Results, Payments, etc).\n\nAre you absolutely sure?";
+    const confirmMsg = "⚠️ DANGER: This will PERMANENTLY DELETE the student and ALL their records (Results, Payments, etc).\\n\\nAre you absolutely sure?";
     if (!confirm(confirmMsg)) return;
 
     try {
-       await api.delete(`/schmngt/students/${id}`, adminToken);
+       await api.delete(\`/schmngt/students/\${id}\`, token);
        alert("Student Deleted Successfully");
        // Remove from local state immediately
        setStudents(prev => prev.filter(s => s.id !== id));
@@ -178,11 +161,11 @@ const AdminDashboard = () => {
     
     try {
       const updates = fees.map(f => ({ key: f.key, value: f.value.toString() }));
-      await api.post('/schmngt/settings', { updates }, adminToken);
+      await api.post('/schmngt/settings', { updates }, token);
       
       alert('Fees Updated Successfully');
       // Refresh to confirm backend persistence
-      const newSettings = await api.get('/schmngt/settings', adminToken);
+      const newSettings = await api.get('/schmngt/settings', token);
       setFees(newSettings || []);
     } catch (err) { 
       alert('Failed to update fees'); 
@@ -221,9 +204,9 @@ const AdminDashboard = () => {
         exam: scoreData.exam,
         term: 'First Term',
         session: '2025/2026'
-      }, adminToken);
+      }, token);
       
-      alert(`Result for ${scoreData.subject} Saved Successfully!`);
+      alert(\`Result for \${scoreData.subject} Saved Successfully!\`);
       setScoreData({ subject: '', ca: '', exam: '' }); // Reset form
     } catch(err) { 
       alert("Failed: " + err.message); 
@@ -234,17 +217,17 @@ const AdminDashboard = () => {
 
   const generateStaffCode = async () => {
     try {
-      const res = await api.post('/schmngt/generate-code', {}, adminToken);
+      const res = await api.post('/schmngt/generate-code', {}, token);
       // Copy to clipboard
       navigator.clipboard.writeText(res.code);
-      alert(`NEW TOKEN GENERATED: ${res.code}\n\n(Copied to clipboard)`);
+      alert(\`NEW TOKEN GENERATED: \${res.code}\\n\\n(Copied to clipboard)\`);
     } catch (err) { alert('Failed to generate code'); }
   };
 
   const sendBroadcast = async () => {
     if (!broadcast.title || !broadcast.message) return alert("Fill all fields");
     try {
-      await api.post('/schmngt/broadcast', broadcast, adminToken);
+      await api.post('/schmngt/broadcast', broadcast, token);
       alert('Broadcast Sent Successfully!');
       setBroadcast({ title: '', message: '', target: 'all' });
     } catch (err) { alert('Failed to send broadcast'); }
@@ -264,13 +247,13 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800 relative">
       
       {/* --- SIDEBAR --- */}
-      <aside className={`
+      <aside className={\`
         bg-slate-900 text-white flex flex-col fixed h-full z-30 shadow-2xl transition-all duration-300
-        ${sidebarOpen ? 'w-64' : 'w-20'}
-      `}>
+        \${sidebarOpen ? 'w-64' : 'w-20'}
+      \`}>
         {/* Sidebar Header with Logo */}
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-           <div className={`flex items-center gap-3 transition-opacity ${!sidebarOpen && 'opacity-0 hidden'}`}>
+           <div className={\`flex items-center gap-3 transition-opacity \${!sidebarOpen && 'opacity-0 hidden'}\`}>
              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden">
                 <img src="/meritlogo.jpg" alt="Logo" className="w-full h-full object-cover" />
              </div>
@@ -301,7 +284,7 @@ const AdminDashboard = () => {
         <div className="p-4 border-t border-slate-800">
           <button 
             onClick={()=>{logout(); navigate('/');}} 
-            className={`flex items-center gap-3 text-red-300 hover:text-white hover:bg-slate-800 transition w-full p-2 rounded ${!sidebarOpen && 'justify-center'}`}
+            className={\`flex items-center gap-3 text-red-300 hover:text-white hover:bg-slate-800 transition w-full p-2 rounded \${!sidebarOpen && 'justify-center'}\`}
             title="Logout"
           >
             <LogOut size={20}/> 
@@ -311,7 +294,7 @@ const AdminDashboard = () => {
       </aside>
 
       {/* --- MAIN CONTENT --- */}
-      <main className={`flex-1 p-8 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
+      <main className={\`flex-1 p-8 transition-all duration-300 \${sidebarOpen ? 'ml-64' : 'ml-20'}\`}>
         
         {/* Top Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
@@ -328,13 +311,13 @@ const AdminDashboard = () => {
                 A
              </div>
              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-800">{adminEmail || "Admin User"}</p>
+                <p className="text-sm font-bold text-slate-800">{user?.email || "Admin User"}</p>
                 <div className="flex items-center justify-end gap-1.5">
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                   <p className="text-xs text-slate-500 font-medium">Super Admin</p>
                 </div>
              </div>
-             <button onClick={() => loadInitialData(adminToken)} className="p-2 hover:bg-slate-100 rounded-full transition" title="Refresh Data">
+             <button onClick={() => loadInitialData(token)} className="p-2 hover:bg-slate-100 rounded-full transition" title="Refresh Data">
                 <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
              </button>
           </div>
@@ -348,7 +331,7 @@ const AdminDashboard = () => {
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard label="Total Students" value={stats?.totalStudents} icon={<Users/>} color="blue" />
-              <StatCard label="Total Revenue" value={`₦${stats?.totalRevenue?.toLocaleString()}`} icon={<DollarSign/>} color="green" />
+              <StatCard label="Total Revenue" value={\`₦\${stats?.totalRevenue?.toLocaleString()}\`} icon={<DollarSign/>} color="green" />
               <StatCard label="Staff Count" value={stats?.totalStaff} icon={<Shield/>} color="purple" />
               <StatCard label="Pending Approval" value={stats?.pendingValidation} icon={<AlertTriangle/>} color="orange" />
             </div>
@@ -447,13 +430,13 @@ const AdminDashboard = () => {
                               <div className="flex gap-2">
                                 <button 
                                   onClick={() => toggleStudentStatus(s.id, 'validate', s.is_validated)} 
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${s.is_validated ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                  className={\`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors \${s.is_validated ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}\`}
                                 >
                                   {s.is_validated ? 'Active' : 'Locked'}
                                 </button>
                                 <button 
                                   onClick={() => toggleStudentStatus(s.id, 'parent_access', s.is_parent_access_enabled)} 
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${s.is_parent_access_enabled ? 'bg-teal-100 text-teal-700 hover:bg-teal-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                  className={\`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors \${s.is_parent_access_enabled ? 'bg-teal-100 text-teal-700 hover:bg-teal-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}\`}
                                 >
                                   Parents
                                 </button>
@@ -489,7 +472,7 @@ const AdminDashboard = () => {
                   <div 
                     key={s.id} 
                     onClick={() => handleStudentSelectForResult(s)} 
-                    className={`p-4 rounded-xl cursor-pointer transition border ${selectedStudentForResults?.id === s.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
+                    className={\`p-4 rounded-xl cursor-pointer transition border \${selectedStudentForResults?.id === s.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}\`}
                   >
                     <div className="font-bold text-slate-900">{s.surname} {s.first_name}</div>
                     <div className="text-xs text-slate-500 font-mono mt-1">{s.student_id_text} • {s.department}</div>
@@ -505,7 +488,7 @@ const AdminDashboard = () => {
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Selected Student</label>
                   <div className="font-bold text-lg text-slate-800">
-                    {selectedStudentForResults ? `${selectedStudentForResults.surname} ${selectedStudentForResults.first_name}` : <span className="text-slate-400 italic">None Selected</span>}
+                    {selectedStudentForResults ? \`\${selectedStudentForResults.surname} \${selectedStudentForResults.first_name}\` : <span className="text-slate-400 italic">None Selected</span>}
                   </div>
                 </div>
 
@@ -554,7 +537,7 @@ const AdminDashboard = () => {
                 <button 
                   onClick={uploadResult} 
                   disabled={!selectedStudentForResults || !scoreData.subject} 
-                  className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${!selectedStudentForResults || !scoreData.subject ? 'bg-slate-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1'}`}
+                  className={\`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all \${!selectedStudentForResults || !scoreData.subject ? 'bg-slate-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1'}\`}
                 >
                   Upload Result to Portal
                 </button>
@@ -580,10 +563,10 @@ const AdminDashboard = () => {
                     <td className="p-5 text-slate-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
                     <td className="p-5 font-medium">{log.student_name}</td>
                     <td className="p-5">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+                      <span className={\`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide \${
                         log.action.includes('payment') ? 'bg-green-100 text-green-700' : 
                         log.action.includes('register') ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
-                      }`}>
+                      }\`}>
                         {log.action.replace('_', ' ')}
                       </span>
                     </td>
@@ -598,7 +581,7 @@ const AdminDashboard = () => {
         {/* 5. LIBRARY */}
         {activeTab === 'library' && (
           <div className="animate-fadeIn">
-             <LibraryView user={{ id: 'admin', email: adminEmail, full_name: 'Administrator' }} role="admin" isAdmin={true} token={adminToken} />
+             <LibraryView user={{ id: 'admin', email: user?.email, full_name: 'Administrator' }} role="admin" isAdmin={true} token={token} />
           </div>
         )}
 
@@ -680,11 +663,11 @@ const AdminDashboard = () => {
 const TabBtn = ({ icon, label, active, expanded, onClick }) => (
   <button 
     onClick={onClick} 
-    className={`
+    className={\`
       flex items-center gap-4 px-4 py-3 rounded-xl w-full text-left transition-all duration-200
-      ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
-      ${!expanded && 'justify-center px-2'}
-    `}
+      \${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
+      \${!expanded && 'justify-center px-2'}
+    \`}
     title={!expanded ? label : ''}
   >
     <div className={active ? 'text-white' : ''}>{icon}</div>
@@ -700,12 +683,12 @@ const StatCard = ({ label, value, icon, color }) => {
     orange: 'bg-orange-50 text-orange-600 border-orange-100'
   };
   return (
-    <div className={`p-6 rounded-2xl shadow-sm border ${colors[color].replace('bg-', 'border-').split(' ')[2]} bg-white flex items-center justify-between group hover:shadow-md transition-all`}>
+    <div className={\`p-6 rounded-2xl shadow-sm border \${colors[color].replace('bg-', 'border-').split(' ')[2]} bg-white flex items-center justify-between group hover:shadow-md transition-all\`}>
       <div>
         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
         <p className="text-3xl font-black text-slate-900">{value || 0}</p>
       </div>
-      <div className={`p-4 rounded-xl ${colors[color]} group-hover:scale-110 transition-transform`}>{icon}</div>
+      <div className={\`p-4 rounded-xl \${colors[color]} group-hover:scale-110 transition-transform\`}>{icon}</div>
     </div>
   );
 };
@@ -718,7 +701,7 @@ const ActionButton = ({ onClick, icon, label, color }) => {
     green: 'bg-green-50 text-green-700 hover:bg-green-600 hover:text-white'
   };
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-300 ${colors[color]} shadow-sm hover:shadow-lg`}>
+    <button onClick={onClick} className={\`flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-300 \${colors[color]} shadow-sm hover:shadow-lg\`}>
       <div className="mb-3 transform scale-125">{icon}</div>
       <span className="font-bold text-xs uppercase tracking-wide text-center">{label}</span>
     </button>
@@ -732,7 +715,7 @@ const ProgressBar = ({ label, count, total, color }) => (
       <span className="text-xs font-bold text-slate-400">{count || 0} Students</span>
     </div>
     <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full ${color}`} style={{ width: `${total ? (count / total) * 100 : 0}%` }}></div>
+      <div className={\`h-full rounded-full \${color}\`} style={{ width: \`\${total ? (count / total) * 100 : 0}%\` }}></div>
     </div>
   </div>
 );
@@ -747,3 +730,5 @@ const calculateGrade = (total) => {
 };
 
 export default AdminDashboard;
+`
+}

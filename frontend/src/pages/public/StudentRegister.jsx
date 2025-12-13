@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useReactToPrint } from 'react-to-print';
+import html2canvas from 'html2canvas';
 import { 
   Upload, X, AlertCircle, CheckCircle, MapPin, 
   User, Book, FileText, Save, Eye, EyeOff, ChevronRight, ChevronLeft, 
@@ -53,12 +55,34 @@ const StudentRegister = () => {
     }
   }, [formData.programme]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `${formData.surname}_Registration_Form`,
+    pageStyle: `
+      @page { size: A4; margin: 10mm; }
+      @media print {
+        body { -webkit-print-color-adjust: exact; }
+        .no-print { display: none; }
+      }
+    `
+  });
 
   const handleDownloadImage = async () => {
-    alert('Use the Print button and select "Save as PDF" to download');
+    if (!printRef.current) return;
+    try {
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        windowWidth: 850
+      });
+      const link = document.createElement('a');
+      link.download = `Registration_${formData.surname}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      alert('Download failed. Try using the Print option.');
+    }
   };
 
   const handleImageUpload = (e) => {

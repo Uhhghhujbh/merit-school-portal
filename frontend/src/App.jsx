@@ -1,25 +1,27 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-// Auth Pages
+// --- AUTH PAGES (Login) ---
+// These are in src/pages/auth/
 import AdminLogin from './pages/auth/AdminLogin';
 import StudentLogin from './pages/auth/StudentLogin';
 import StaffLogin from './pages/auth/StaffLogin';
 import ParentLogin from './pages/auth/ParentLogin';
 
-// Registration Pages
-import StudentRegister from './pages/auth/StudentRegister';
-import StaffRegister from './pages/auth/StaffRegister';
+// --- PUBLIC PAGES (Registration) ---
+// These are in src/pages/public/ <--- FIXED PATHS
+import StudentRegister from './pages/public/StudentRegister';
+import StaffRegister from './pages/public/StaffRegister';
 
-// Dashboards
+// --- DASHBOARDS ---
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StaffDashboard from './pages/staff/StaffDashboard';
 import ParentDashboard from './pages/parent/ParentDashboard';
 
-
 import LandingPage from './pages/LandingPage'; 
 
+// Protected Route Wrapper
 import { useAuthStore } from './store/authStore';
 
 const ProtectedRoute = ({ children, allowedRole }) => {
@@ -43,17 +45,17 @@ const App = () => {
         {/* --- PUBLIC ROUTES --- */}
         <Route path="/" element={<LandingPage />} />
         
-        {/* Auth Routes */}
+        {/* Auth Routes (Login) */}
         <Route path="/auth/admin" element={<AdminLogin />} />
-        
         <Route path="/auth/student" element={<StudentLogin />} />
-        <Route path="/auth/student/register" element={<StudentRegister />} />
-        
         <Route path="/auth/staff" element={<StaffLogin />} />
-        <Route path="/auth/staff/register" element={<StaffRegister />} />
-        
         <Route path="/auth/parent" element={<ParentLogin />} />
 
+        {/* Registration Routes (Public) */}
+        <Route path="/auth/student/register" element={<StudentRegister />} />
+        <Route path="/auth/staff/register" element={<StaffRegister />} />
+        
+        {/* --- PROTECTED DASHBOARDS --- */}
         <Route 
           path="/auth/admin/dashboard" 
           element={
@@ -88,6 +90,7 @@ const App = () => {
           } 
         />
 
+        {/* 404 Fallback */}
         <Route path="*" element={
           <div className="h-screen flex flex-col items-center justify-center text-slate-500">
             <h1 className="text-4xl font-bold">404</h1>

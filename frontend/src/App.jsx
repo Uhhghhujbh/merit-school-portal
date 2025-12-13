@@ -12,14 +12,13 @@ import ParentLogin from './pages/auth/ParentLogin';
 // These are in src/pages/public/ <--- FIXED PATHS
 import StudentRegister from './pages/public/StudentRegister';
 import StaffRegister from './pages/public/StaffRegister';
+import LandingPage from './pages/public/LandingPage'; 
 
 // --- DASHBOARDS ---
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StaffDashboard from './pages/staff/StaffDashboard';
 import ParentDashboard from './pages/parent/ParentDashboard';
-
-import LandingPage from './pages/LandingPage'; 
 
 // Protected Route Wrapper
 import { useAuthStore } from './store/authStore';

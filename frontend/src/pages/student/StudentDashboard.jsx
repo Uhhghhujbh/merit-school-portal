@@ -8,7 +8,8 @@ import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
 import { 
   LayoutDashboard, BookOpen, CreditCard, User, LogOut, 
   Bell, Calendar, Lock, AlertCircle, CheckCircle, ExternalLink, 
-  Printer, ChevronRight, Shield, Menu, X, FileText, Book, FileCheck, Download, Share2, AlertTriangle, Loader2
+  Printer, Shield, Menu, X, FileText, Book, FileCheck, Download, 
+  ChevronRight, Landmark, Send
 } from 'lucide-react';
 import AdmissionLetter from '../../components/shared/AdmissionLetter';
 import LibraryView from '../../components/shared/LibraryView';
@@ -26,7 +27,11 @@ const StudentDashboard = () => {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  
+  // Payment State
+  const [paymentMethod, setPaymentMethod] = useState('card'); // 'card' or 'transfer'
+  const [manual specificRef, setManualRef] = useState('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
 
   // --- REFS FOR PRINTING ---
   const admissionPrintRef = useRef();
@@ -57,19 +62,6 @@ const StudentDashboard = () => {
     } catch (err) { alert('Download failed. Please try Printing to PDF instead.'); }
   };
 
-  const handleShare = async (ref, title) => {
-    try {
-      if(!ref.current) return;
-      const canvas = await html2canvas(ref.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-      canvas.toBlob(async (blob) => {
-        const file = new File([blob], `${title}.png`, { type: 'image/png' });
-        if (navigator.share && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: title });
-        } else { alert('Share not supported on this device.'); }
-      });
-    } catch (err) { alert('Share failed.'); }
-  };
-
   // --- INITIALIZATION ---
   useEffect(() => {
     if (!token) { navigate('/auth/student'); return; }
@@ -77,10 +69,8 @@ const StudentDashboard = () => {
   }, [user, token, navigate]);
 
   const loadDashboardData = async () => {
-    setRefreshing(true);
     try {
       if (user?.id) {
-        // Parallel Fetch for Speed
         const [profileData, msgData, feeData, resultsData] = await Promise.all([
           api.get(`/students/profile/${user.id}`, token),
           api.get(`/students/announcements`, token),
@@ -97,7 +87,6 @@ const StudentDashboard = () => {
       console.error("Dashboard Load Error:", err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -111,6 +100,7 @@ const StudentDashboard = () => {
 
   const amount = profile ? getFeeAmount() : 0;
 
+  // Flutterwave Config
   const flutterwaveConfig = {
     public_key: import.meta.env.VITE_FLUTTERWAVE_PUBLIC_KEY,
     tx_ref: `MCAS-${Date.now()}-${user?.id}`,
@@ -137,38 +127,43 @@ const StudentDashboard = () => {
     handleFlutterPayment({
       callback: async (response) => {
         closePaymentModal();
-        
-        // DEBUGGING: Log the entire response to see what's happening
-        console.log("Full Payment Response:", JSON.stringify(response));
-
-        // CRITICAL FIX: TRUST THE TRANSACTION ID, IGNORE THE STATUS STRING
-        // If we have a transaction_id (or id), we send it to the backend for verification.
         const txId = response.transaction_id || response.id;
         
         if (txId) {
             try {
-              console.log("Sending for verification:", txId);
               await api.post('/students/verify-payment', {
                 transaction_id: txId,
                 student_id: user.id
               }, token);
-              
               alert("Payment Verified! Dashboard Refreshing...");
               loadDashboardData(); 
             } catch (err) {
-              console.error("Verification Error:", err);
               alert(`Payment recorded but verification pending. ID: ${txId}`);
             }
-        } else {
-            // Only fail if we completely lack an ID
-            console.error("Missing Transaction ID", response);
-            alert("Payment processed but no Transaction ID returned. Contact Admin.");
         }
       },
-      onClose: () => {
-        console.log("Payment modal closed by user");
-      },
+      onClose: () => {},
     });
+  };
+
+  // Manual Transfer Logic
+  const submitManualPayment = async () => {
+      if(!manualRef) return alert("Please enter the transaction reference or sender name.");
+      setSubmittingPayment(true);
+      try {
+          await api.post('/students/manual-payment', {
+              student_id: user.id,
+              reference: manualRef,
+              amount: amount
+          }, token);
+          alert("Payment Submitted! Admin will verify shortly.");
+          setManualRef('');
+          loadDashboardData();
+      } catch (err) {
+          alert("Failed to submit: " + err.message);
+      } finally {
+          setSubmittingPayment(false);
+      }
   };
 
   // --- HELPERS ---
@@ -178,38 +173,26 @@ const StudentDashboard = () => {
     if (window.confirm('Are you sure you want to sign out?')) { logout(); navigate('/'); }
   };
 
-  // --- LOCK LOGIC ---
   const isAccountLocked = !profile?.is_validated;
   const isPaymentLocked = profile?.payment_status !== 'paid';
   const isFeatureLocked = isAccountLocked || isPaymentLocked; 
 
-  // --- DATA PROCESSING ---
   const groupedResults = results.reduce((groups, r) => {
-    const key = `${r.session} - ${r.term}`; // e.g. "2025/2026 - First Term"
+    const key = `${r.session} - ${r.term}`; 
     if (!groups[key]) groups[key] = [];
     groups[key].push(r);
     return groups;
   }, {});
 
-  const calculateAverage = () => {
-    if (!results || results.length === 0) return 0;
-    const total = results.reduce((acc, curr) => acc + (Number(curr.total_score) || 0), 0);
-    return (total / results.length).toFixed(1);
-  };
-
-  // --- RENDER ---
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="relative">
-        <Loader2 className="animate-spin w-16 h-16 text-blue-900 mb-4"/>
-        <div className="absolute inset-0 blur-xl bg-blue-200 opacity-20 animate-pulse"/>
-      </div>
-      <p className="text-slate-600 font-semibold animate-pulse text-lg">Loading Student Portal...</p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+      <div className="animate-spin w-12 h-12 border-4 border-blue-900 border-t-transparent rounded-full mb-4"></div>
+      <p className="text-slate-600 font-medium animate-pulse">Loading Student Portal...</p>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800">
       
       {/* --- SIDEBAR --- */}
       <aside className={`
@@ -217,19 +200,17 @@ const StudentDashboard = () => {
         transform transition-transform duration-300 ease-in-out 
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col
       `}>
-        {/* Header */}
-        <div className="p-6 border-b border-blue-800 flex items-center gap-3 bg-gradient-to-r from-blue-950 to-blue-900">
-          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden border-2 border-blue-200 shadow-lg">
+        <div className="p-6 border-b border-blue-800 flex items-center gap-3 bg-blue-950">
+          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden border-2 border-blue-200">
              <img src="/meritlogo.jpg" alt="Logo" className="w-full h-full object-cover" />
           </div>
-          <div className="flex-1">
+          <div>
             <h1 className="font-bold tracking-tight text-lg">MCAS PORTAL</h1>
             <p className="text-[10px] text-blue-300 uppercase tracking-widest">Student Access</p>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-blue-300 hover:text-white transition"><X/></button>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-blue-300"><X/></button>
         </div>
 
-        {/* Menu */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
           <SidebarItem 
             icon={<LayoutDashboard size={20}/>} 
@@ -239,11 +220,7 @@ const StudentDashboard = () => {
           />
           
           <div className="pt-4 pb-2">
-            <p className="px-4 text-xs font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <div className="h-px bg-blue-700 flex-1"/>
-              <span>Academics</span>
-              <div className="h-px bg-blue-700 flex-1"/>
-            </p>
+            <p className="px-4 text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Academics</p>
             <SidebarItem 
               icon={<BookOpen size={20}/>} 
               label="My Courses" 
@@ -275,11 +252,7 @@ const StudentDashboard = () => {
           </div>
 
           <div className="pt-2">
-            <p className="px-4 text-xs font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <div className="h-px bg-blue-700 flex-1"/>
-              <span>Finance</span>
-              <div className="h-px bg-blue-700 flex-1"/>
-            </p>
+            <p className="px-4 text-xs font-bold text-blue-400 uppercase tracking-wider mb-2">Finance</p>
             <SidebarItem 
               icon={<CreditCard size={20}/>} 
               label="Tuition & Fees" 
@@ -289,43 +262,42 @@ const StudentDashboard = () => {
           </div>
         </nav>
 
-        {/* User Footer */}
-        <div className="p-4 border-t border-blue-800 bg-gradient-to-r from-blue-950 to-blue-900">
-           <div className="flex items-center gap-3 mb-4 p-3 bg-blue-900/50 rounded-xl border border-blue-800 backdrop-blur-sm hover:bg-blue-800/50 transition-all">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-xl font-bold text-blue-700 overflow-hidden ring-2 ring-blue-700 ring-offset-2 ring-offset-blue-900">
+        <div className="p-4 border-t border-blue-800 bg-blue-950">
+           <div className="flex items-center gap-3 mb-4 p-2 bg-blue-900 rounded-xl border border-blue-800">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl font-bold text-blue-700 overflow-hidden">
                  {profile?.photo_url ? (
                     <img src={profile.photo_url} alt="Profile" className="w-full h-full object-cover" />
                  ) : (
                     profile?.surname?.charAt(0)
                  )}
               </div>
-              <div className="overflow-hidden flex-1">
-                 <p className="font-bold text-sm truncate">{profile?.surname} {profile?.first_name}</p>
+              <div className="overflow-hidden">
+                 <p className="font-bold text-sm truncate w-32">{profile?.surname} {profile?.first_name}</p>
                  <p className="text-[10px] text-blue-300 font-mono truncate">{profile?.student_id_text}</p>
               </div>
            </div>
-           <button onClick={handleLogout} className="flex items-center justify-center gap-2 text-red-200 hover:text-white w-full p-3 rounded-lg hover:bg-red-900/50 transition-all border border-transparent hover:border-red-800 font-medium">
+           <button onClick={handleLogout} className="flex items-center justify-center gap-2 text-red-200 hover:text-white w-full p-2 rounded-lg hover:bg-red-900/30 transition border border-transparent hover:border-red-800">
               <LogOut size={16} /> Sign Out
            </button>
         </div>
       </aside>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 p-4 md:p-8 mt-16 md:mt-0 overflow-y-auto h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <main className="flex-1 p-4 md:p-8 mt-16 md:mt-0 overflow-y-auto h-screen bg-slate-50">
         
         {/* Mobile Header */}
-        <div className="md:hidden fixed top-0 left-0 w-full bg-gradient-to-r from-blue-900 to-blue-800 text-white z-30 flex justify-between items-center p-4 shadow-lg backdrop-blur-sm">
+        <div className="md:hidden fixed top-0 left-0 w-full bg-blue-900 text-white z-30 flex justify-between items-center p-4 shadow-md">
            <div className="flex items-center gap-2">
-              <img src="/meritlogo.jpg" className="w-8 h-8 rounded-full bg-white p-0.5 shadow-md" />
+              <img src="/meritlogo.jpg" className="w-8 h-8 rounded-full bg-white p-0.5" />
               <span className="font-bold">MCAS</span>
            </div>
-           <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-blue-800 rounded-lg transition"><Menu/></button>
+           <button onClick={() => setSidebarOpen(true)} className="p-2"><Menu/></button>
         </div>
 
         {/* Desktop Header */}
-        <header className="hidden md:flex justify-between items-end mb-10 border-b-2 border-slate-200 pb-6">
+        <header className="hidden md:flex justify-between items-end mb-10 border-b border-slate-200 pb-6">
            <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-1">
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight">
                  {activeTab === 'overview' ? `Hello, ${profile?.first_name}!` : 
                   activeTab === 'courses' ? 'My Registered Courses' :
                   activeTab === 'report' ? 'Academic Results' :
@@ -346,52 +318,44 @@ const StudentDashboard = () => {
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fadeIn">
               <div className="lg:col-span-2 space-y-8">
                  
-                 {/* Lock Warning */}
                  {isFeatureLocked && (
-                    <div className="bg-gradient-to-r from-orange-50 to-orange-100 border-l-8 border-orange-500 p-6 rounded-r-xl shadow-lg flex gap-4 items-start animate-pulse">
-                       <Lock className="text-orange-500 shrink-0 mt-1" size={28}/>
+                    <div className="bg-orange-50 border-l-8 border-orange-500 p-6 rounded-r-xl shadow-sm flex gap-4 items-start">
+                       <Lock className="text-orange-500 shrink-0 mt-1" size={24}/>
                        <div>
-                          <h3 className="font-bold text-orange-900 text-xl mb-1">Portal Access Restricted</h3>
-                          <p className="text-orange-800 text-sm mt-2 leading-relaxed">
-                             Your access to academic features (Results, Library, Admission Letter) is currently locked. 
+                          <h3 className="font-bold text-orange-900 text-lg">Portal Access Restricted</h3>
+                          <p className="text-orange-800 text-sm mt-1">
+                             Your access to academic features is currently locked. 
                              Please complete your <strong>Tuition Payment</strong> and wait for <strong>Admin Validation</strong>.
                           </p>
-                          <button onClick={() => setActiveTab('payments')} className="mt-4 text-xs font-bold bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
-                             Go to Payments →
+                          <button onClick={() => setActiveTab('payments')} className="mt-3 text-xs font-bold bg-orange-200 text-orange-800 px-3 py-1.5 rounded hover:bg-orange-300 transition">
+                             Go to Payments &rarr;
                           </button>
                        </div>
                     </div>
                  )}
 
-                 {/* Admission Letter Card */}
-                 <div className={`bg-white p-8 rounded-2xl shadow-lg border border-slate-200 relative overflow-hidden transition-all hover:shadow-xl ${isFeatureLocked ? 'opacity-60 pointer-events-none grayscale' : ''}`}>
-                    <div className="absolute top-0 right-0 p-6 opacity-5"><FileText size={140}/></div>
-                    <div className="relative z-10">
-                      <h3 className="font-bold text-2xl text-slate-900 mb-2 flex items-center gap-2">
-                        <FileText className="text-blue-600" size={24}/>
-                        Admission Letter
-                      </h3>
-                      <p className="text-slate-500 mb-6 max-w-md leading-relaxed">Download your official provisional admission letter for the 2025/2026 academic session.</p>
-                      <div className="flex flex-wrap gap-3">
-                         <button onClick={handleAdmissionPrint} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-all"><Printer size={18}/> Print PDF</button>
-                         <button onClick={() => handleDownload(admissionPrintRef, `Admission_${profile?.surname}`)} className="btn-secondary flex items-center gap-2 shadow-md hover:shadow-lg transition-all"><Download size={18}/> Download</button>
-                      </div>
+                 <div className={`bg-white p-8 rounded-2xl shadow-soft border border-slate-200 relative overflow-hidden ${isFeatureLocked ? 'opacity-60 pointer-events-none grayscale' : ''}`}>
+                    <div className="absolute top-0 right-0 p-6 opacity-5"><FileText size={120}/></div>
+                    <h3 className="font-bold text-xl text-slate-900 mb-2">Admission Letter</h3>
+                    <p className="text-slate-500 mb-6 max-w-md">Download your official provisional admission letter for the 2025/2026 academic session.</p>
+                    <div className="flex flex-wrap gap-3">
+                       <button onClick={handleAdmissionPrint} className="btn-primary flex items-center gap-2"><Printer size={18}/> Print PDF</button>
+                       <button onClick={() => handleDownload(admissionPrintRef, `Admission_${profile?.surname}`)} className="btn-secondary flex items-center gap-2"><Download size={18}/> Download</button>
                     </div>
                  </div>
 
-                 {/* Announcements */}
-                 <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden hover:shadow-xl transition-all">
-                    <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><Bell className="text-blue-600" size={20}/> Announcements</h3>
-                       <span className="text-xs font-bold bg-blue-100 text-blue-700 px-3 py-1 rounded-full shadow-sm">{announcements.length} New</span>
+                 <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
+                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                       <h3 className="font-bold text-slate-800 flex items-center gap-2"><Bell className="text-blue-600" size={18}/> Announcements</h3>
+                       <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{announcements.length} New</span>
                     </div>
                     <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto custom-scrollbar">
-                       {announcements.length === 0 ? <p className="p-8 text-center text-slate-400">No news yet.</p> : 
+                       {announcements.length === 0 ? <p className="p-6 text-center text-slate-400">No news yet.</p> : 
                         announcements.map(msg => (
-                           <div key={msg.id} className="p-6 hover:bg-gradient-to-r hover:from-slate-50 hover:to-transparent transition-all">
-                              <h4 className="font-bold text-slate-900 text-sm mb-1">{msg.title}</h4>
-                              <p className="text-slate-600 text-xs mt-1 line-clamp-2 leading-relaxed">{msg.message}</p>
-                              <p className="text-[10px] text-slate-400 mt-2 uppercase tracking-wider">{new Date(msg.created_at).toLocaleDateString()}</p>
+                           <div key={msg.id} className="p-6 hover:bg-slate-50 transition">
+                              <h4 className="font-bold text-slate-900 text-sm">{msg.title}</h4>
+                              <p className="text-slate-600 text-xs mt-1 line-clamp-2">{msg.message}</p>
+                              <p className="text-[10px] text-slate-400 mt-2">{new Date(msg.created_at).toLocaleDateString()}</p>
                            </div>
                         ))
                        }
@@ -399,33 +363,25 @@ const StudentDashboard = () => {
                  </div>
               </div>
 
-              {/* Sidebar Info */}
               <div className="space-y-6">
-                 <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden hover:shadow-xl transition-all">
-                    <div className="bg-gradient-to-br from-blue-900 to-blue-800 h-28 relative">
-                       <div className="absolute inset-0 bg-black/10"/>
-                       <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2">
-                          <div className="w-24 h-24 bg-white p-1 rounded-full shadow-xl flex items-center justify-center overflow-hidden ring-4 ring-white">
+                 <div className="bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden">
+                    <div className="bg-gradient-to-br from-blue-900 to-blue-800 h-24 relative">
+                       <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2">
+                          <div className="w-20 h-20 bg-white p-1 rounded-full shadow-lg flex items-center justify-center overflow-hidden">
                              {profile?.photo_url ? (
-                                <img src={profile.photo_url} className="w-full h-full object-cover rounded-full" />
+                                <img src={profile.photo_url} className="w-full h-full object-cover" />
                              ) : (
-                                <img src="/meritlogo.jpg" className="w-full h-full object-cover opacity-50 rounded-full" />
+                                <img src="/meritlogo.jpg" className="w-full h-full object-cover opacity-50" />
                              )}
                           </div>
                        </div>
                     </div>
-                    <div className="pt-14 pb-6 px-6 text-center">
-                       <h2 className="font-bold text-xl text-slate-900 mb-1">{profile?.surname} {profile?.first_name}</h2>
+                    <div className="pt-12 pb-6 px-6 text-center">
+                       <h2 className="font-bold text-lg text-slate-900">{profile?.surname} {profile?.first_name}</h2>
                        <p className="text-slate-500 text-xs">{profile?.email}</p>
                        <div className="mt-6 grid grid-cols-2 gap-4 text-left text-xs border-t pt-4">
-                          <div className="p-3 bg-slate-50 rounded-lg">
-                            <p className="text-slate-400 uppercase text-[10px] mb-1">Matric No</p>
-                            <p className="font-bold text-sm">{profile?.student_id_text}</p>
-                          </div>
-                          <div className="p-3 bg-slate-50 rounded-lg">
-                            <p className="text-slate-400 uppercase text-[10px] mb-1">Department</p>
-                            <p className="font-bold text-sm">{profile?.department}</p>
-                          </div>
+                          <div><p className="text-slate-400 uppercase">Matric No</p><p className="font-bold">{profile?.student_id_text}</p></div>
+                          <div><p className="text-slate-400 uppercase">Dept</p><p className="font-bold">{profile?.department}</p></div>
                        </div>
                     </div>
                  </div>
@@ -436,16 +392,13 @@ const StudentDashboard = () => {
         {/* 2. COURSES TAB */}
         {activeTab === 'courses' && (
            <div className="animate-fadeIn">
-              <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200">
-                 <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                   <BookOpen className="text-blue-600" size={28}/>
-                   Registered Courses
-                 </h2>
+              <div className="bg-white p-8 rounded-2xl shadow-soft border border-slate-200">
+                 <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><BookOpen className="text-blue-600"/> Registered Courses</h2>
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {(profile?.subjects || []).map((sub, i) => (
-                       <div key={i} className="p-5 border-2 border-slate-200 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-white hover:to-slate-50 hover:border-blue-500 hover:shadow-lg transition-all flex items-center gap-4 group">
-                          <div className="w-12 h-12 bg-blue-50 border-2 border-blue-200 rounded-xl flex items-center justify-center text-blue-600 font-bold group-hover:bg-blue-600 group-hover:text-white transition-all">{i+1}</div>
-                          <span className="font-bold text-slate-700 flex-1">{sub}</span>
+                       <div key={i} className="p-4 border border-slate-200 rounded-xl bg-slate-50 hover:bg-white hover:border-blue-500 hover:shadow-md transition flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white border rounded-lg flex items-center justify-center text-blue-600 font-bold">{i+1}</div>
+                          <span className="font-bold text-slate-700">{sub}</span>
                        </div>
                     ))}
                  </div>
@@ -453,34 +406,31 @@ const StudentDashboard = () => {
            </div>
         )}
 
-        {/* 3. REPORT CARD TAB (Session Grouped) */}
+        {/* 3. REPORT CARD TAB */}
         {activeTab === 'report' && (
            <div className="space-y-8 animate-fadeIn">
-              <div className="flex justify-between items-center bg-white p-5 rounded-xl border border-slate-200 shadow-lg">
-                 <h2 className="font-bold text-xl flex items-center gap-2">
-                   <FileCheck className="text-green-600" size={24}/>
-                   Academic Records
-                 </h2>
+              <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                 <h2 className="font-bold text-lg flex items-center gap-2"><FileCheck className="text-green-600"/> Academic Records</h2>
                  <div className="flex gap-2">
-                    <button onClick={handleReportPrint} disabled={results.length===0} className="btn-primary text-sm flex items-center gap-2 py-2 shadow-md hover:shadow-lg transition-all disabled:opacity-50"><Printer size={16}/> Print Report</button>
-                    <button onClick={() => handleDownload(reportPrintRef, `Report_${profile?.surname}`)} disabled={results.length===0} className="btn-secondary text-sm flex items-center gap-2 py-2 shadow-md hover:shadow-lg transition-all disabled:opacity-50"><Download size={16}/> Save Image</button>
+                    <button onClick={handleReportPrint} disabled={results.length===0} className="btn-primary text-sm flex items-center gap-2 py-2"><Printer size={16}/> Print Report</button>
+                    <button onClick={() => handleDownload(reportPrintRef, `Report_${profile?.surname}`)} disabled={results.length===0} className="btn-secondary text-sm flex items-center gap-2 py-2"><Download size={16}/> Save Image</button>
                  </div>
               </div>
 
               {results.length === 0 ? (
-                 <div className="text-center py-24 bg-white rounded-2xl border-2 border-dashed border-slate-300 shadow-inner">
-                    <FileCheck size={64} className="mx-auto text-slate-300 mb-4"/>
-                    <p className="text-slate-500 font-medium">No results uploaded yet.</p>
+                 <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
+                    <FileCheck size={48} className="mx-auto text-slate-300 mb-4"/>
+                    <p className="text-slate-500">No results uploaded yet.</p>
                  </div>
               ) : (
                  Object.entries(groupedResults).map(([sessionTitle, sessionResults]) => (
-                    <div key={sessionTitle} className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden hover:shadow-xl transition-all">
-                       <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 px-6 flex justify-between items-center">
-                          <h3 className="font-bold text-lg">{sessionTitle}</h3>
-                          <span className="text-xs bg-slate-700 px-4 py-1.5 rounded-full font-medium">{sessionResults.length} Courses</span>
+                    <div key={sessionTitle} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                       <div className="bg-slate-900 text-white p-4 px-6 flex justify-between items-center">
+                          <h3 className="font-bold">{sessionTitle}</h3>
+                          <span className="text-xs bg-slate-700 px-3 py-1 rounded-full">{sessionResults.length} Courses</span>
                        </div>
                        <table className="w-full text-left text-sm">
-                          <thead className="bg-slate-50 font-bold border-b-2 text-slate-600">
+                          <thead className="bg-slate-50 font-bold border-b text-slate-600">
                              <tr>
                                 <th className="p-4">Subject</th>
                                 <th className="p-4 text-center">CA</th>
@@ -492,12 +442,12 @@ const StudentDashboard = () => {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                              {sessionResults.map((r, i) => (
-                                <tr key={i} className="hover:bg-slate-50 transition-all">
+                                <tr key={i} className="hover:bg-slate-50">
                                    <td className="p-4 font-bold text-slate-800">{r.subject}</td>
                                    <td className="p-4 text-center text-slate-500">{r.ca_score}</td>
                                    <td className="p-4 text-center text-slate-500">{r.exam_score}</td>
-                                   <td className="p-4 text-center font-black text-slate-900 text-base">{r.total_score}</td>
-                                   <td className="p-4 text-center"><span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${['F'].includes(r.grade) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{r.grade}</span></td>
+                                   <td className="p-4 text-center font-black text-slate-900">{r.total_score}</td>
+                                   <td className="p-4 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${['F'].includes(r.grade) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{r.grade}</span></td>
                                    <td className="p-4 text-center text-xs text-slate-500 italic">{r.grade === 'F' ? 'Fail' : 'Pass'}</td>
                                 </tr>
                              ))}
@@ -509,32 +459,83 @@ const StudentDashboard = () => {
            </div>
         )}
 
-        {/* 4. PAYMENTS TAB */}
+        {/* 4. PAYMENTS TAB (UPDATED WITH MANUAL TRANSFER) */}
         {activeTab === 'payments' && (
-           <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-fadeIn">
-              <div className="p-10 text-center">
-                 <div className="w-24 h-24 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-                    <CreditCard size={48}/>
+           <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-soft border border-slate-200 overflow-hidden animate-fadeIn">
+              <div className="p-8">
+                 <div className="text-center mb-8">
+                    <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <CreditCard size={32}/>
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-900">Tuition Payment</h2>
+                    <p className="text-slate-500 text-sm">Session 2025/2026 • {profile?.program_type}</p>
                  </div>
-                 <h2 className="text-3xl font-bold text-slate-900 mb-2">Tuition Payment</h2>
-                 <p className="text-slate-500 mb-8 text-sm font-medium">Session 2025/2026 • {profile?.program_type}</p>
                  
-                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-8 rounded-2xl border border-slate-200 mb-8 shadow-inner">
-                    <p className="text-sm text-slate-500 uppercase tracking-wider mb-2 font-bold">Total Fee</p>
-                    <p className="text-5xl font-black text-slate-900 mb-4">₦{amount.toLocaleString()}</p>
-                    <div className={`mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold shadow-md ${isPaymentLocked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8 text-center">
+                    <p className="text-sm text-slate-500 uppercase tracking-wider mb-1">Total Fee</p>
+                    <p className="text-4xl font-black text-slate-900">₦{amount.toLocaleString()}</p>
+                    <div className={`mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold ${isPaymentLocked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
                        {isPaymentLocked ? <AlertCircle size={14}/> : <CheckCircle size={14}/>}
-                       {isPaymentLocked ? 'PAYMENT PENDING' : 'CLEARED'}
+                       {isPaymentLocked ? 'PAYMENT PENDING' : 'PAYMENT COMPLETE'}
                     </div>
                  </div>
 
                  {isPaymentLocked ? (
-                    <button onClick={initiatePayment} className="w-full bg-gradient-to-r from-blue-900 to-blue-800 text-white py-5 rounded-xl font-bold text-lg hover:from-blue-800 hover:to-blue-700 shadow-xl transition-all transform hover:-translate-y-1 hover:shadow-2xl">
-                       Pay Now with Flutterwave
-                    </button>
+                    <div>
+                        {/* Toggle */}
+                        <div className="flex p-1 bg-slate-100 rounded-lg mb-6">
+                            <button 
+                                onClick={() => setPaymentMethod('card')}
+                                className={`flex-1 py-2 text-sm font-bold rounded-md transition ${paymentMethod === 'card' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}
+                            >
+                                Pay with Card
+                            </button>
+                            <button 
+                                onClick={() => setPaymentMethod('transfer')}
+                                className={`flex-1 py-2 text-sm font-bold rounded-md transition ${paymentMethod === 'transfer' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}
+                            >
+                                Bank Transfer
+                            </button>
+                        </div>
+
+                        {/* Card Payment */}
+                        {paymentMethod === 'card' && (
+                            <button onClick={initiatePayment} className="w-full bg-blue-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-800 shadow-lg transition transform hover:-translate-y-1">
+                                Pay Now (Flutterwave)
+                            </button>
+                        )}
+
+                        {/* Transfer Payment */}
+                        {paymentMethod === 'transfer' && (
+                            <div className="space-y-4 animate-fadeIn">
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm">
+                                    <p className="font-bold text-blue-800 mb-2">Bank Details:</p>
+                                    <p>Bank Name: <span className="font-mono font-bold">OPAY</span></p>
+                                    <p>Account No: <span className="font-mono font-bold text-lg">9030554366</span></p>
+                                    <p>Account Name: <span className="font-mono font-bold">MERIT COLLEGE</span></p>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Sender Name / Ref</label>
+                                    <input 
+                                        className="w-full p-3 border rounded-lg bg-slate-50 font-medium outline-none focus:border-blue-500"
+                                        placeholder="e.g. John Doe - Tuition"
+                                        value={manualRef}
+                                        onChange={e => setManualRef(e.target.value)}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={submitManualPayment} 
+                                    disabled={submittingPayment}
+                                    className="w-full bg-slate-800 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition"
+                                >
+                                    {submittingPayment ? "Submitting..." : <>Submit Proof <Send size={18}/></>}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                  ) : (
-                    <div className="text-green-600 font-bold flex items-center justify-center gap-3 text-lg">
-                       <CheckCircle size={24}/> Payment Complete. Access Granted.
+                    <div className="text-green-600 font-bold flex items-center justify-center gap-2 py-6 bg-green-50 rounded-xl border border-green-100">
+                       <CheckCircle size={24}/> Payment Verified & Complete.
                     </div>
                  )}
               </div>
@@ -565,22 +566,20 @@ const StudentDashboard = () => {
   );
 };
 
-// --- SUB COMPONENTS ---
-
 const SidebarItem = ({ icon, label, active, onClick, locked }) => (
   <button 
     onClick={onClick} 
     disabled={locked}
     className={`
       flex items-center gap-3 px-4 py-3 rounded-xl w-full text-left transition-all duration-200 mb-1 group
-      ${active ? 'bg-blue-500 text-white shadow-lg transform scale-105' : 'text-blue-100 hover:bg-blue-800 hover:text-white'}
+      ${active ? 'bg-blue-500 text-white shadow-lg' : 'text-blue-100 hover:bg-blue-800 hover:text-white'}
       ${locked ? 'opacity-50 cursor-not-allowed' : ''}
     `}
   >
     <div className={`transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</div>
     <span className="font-medium text-sm flex-1">{label}</span>
     {locked && <Lock size={14} className="text-blue-300"/>}
-    {active && !locked && <ChevronRight size={16} className="opacity-70"/>}
+    {active && !locked && <ChevronRight size={16} className="opacity-50"/>}
   </button>
 );
 
@@ -592,8 +591,8 @@ const StatusBadge = ({ icon: Icon, label, color }) => {
     blue: 'bg-blue-50 text-blue-700 border-blue-200'
   };
   return (
-    <div className={`px-4 py-2 rounded-xl border-2 flex items-center gap-2 shadow-sm hover:shadow-md transition-all ${colors[color]}`}>
-      <Icon size={18} />
+    <div className={`px-4 py-2 rounded-xl border flex items-center gap-2 ${colors[color]}`}>
+      <Icon size={16} />
       <div>
         <span className="block text-[10px] uppercase font-bold opacity-70">Status</span>
         <span className="block text-xs font-bold">{label}</span>

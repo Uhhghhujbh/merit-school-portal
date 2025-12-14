@@ -1,4 +1,3 @@
-import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import { useAuthStore } from '../../store/authStore';
@@ -7,7 +6,7 @@ import {
   LayoutDashboard, Users, DollarSign, LogOut, Bell, 
   CheckCircle, XCircle, Printer, Lock, Unlock, Shield, Key, 
   Loader2, AlertTriangle, Book, FileCheck, Search, Activity, Trash2, Edit,
-  Menu, X, RefreshCw, Save
+  Menu, X, RefreshCw, Save, Send, CreditCard
 } from 'lucide-react';
 import AdmissionLetter from '../../components/shared/AdmissionLetter';
 import LibraryView from '../../components/shared/LibraryView';
@@ -28,7 +27,13 @@ const AdminDashboard = () => {
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [fees, setFees] = useState([]);
+  
+  // --- BROADCAST STATE ---
+  const [broadcastList, setBroadcastList] = useState([]);
   const [broadcast, setBroadcast] = useState({ title: '', message: '', target: 'all' });
+  const [isEditingBroadcast, setIsEditingBroadcast] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
   const [searchTerm, setSearchTerm] = useState('');
 
   // --- RESULT UPLOAD STATES ---
@@ -79,11 +84,12 @@ const AdminDashboard = () => {
     try {
       console.log("Fetching Admin Data...");
       
-      const [studentsData, statsData, settingsData, logsData] = await Promise.all([
+      const [studentsData, statsData, settingsData, logsData, msgsData] = await Promise.all([
         api.get('/schmngt/students', authToken),
         api.get('/schmngt/dashboard-stats', authToken),
         api.get('/schmngt/settings', authToken),
-        api.get('/activity-logs/all', authToken)
+        api.get('/activity-logs/all', authToken),
+        api.get('/students/announcements', authToken) // Fetch existing broadcasts
       ]);
 
       setStudents(studentsData || []);
@@ -91,6 +97,7 @@ const AdminDashboard = () => {
       setStats(statsData);
       setFees(settingsData || []);
       setActivityLogs(logsData || []);
+      setBroadcastList(msgsData || []);
       
     } catch (err) {
       console.error("Admin Data Load Error:", err);
@@ -106,11 +113,19 @@ const AdminDashboard = () => {
 
   // --- STUDENT ACTIONS ---
 
-  const toggleStudentStatus = async (id, action, currentValue) => {
+  const toggleStudentStatus = async (id, action, currentValue, student = null) => {
+    // LOCK PROTECTION: Prevent locking if paid
+    if (action === 'validate' && currentValue === true) {
+        if (student && student.payment_status === 'paid') {
+            alert("ACTION DENIED: You cannot Lock/Deactivate a student who has already paid.");
+            return;
+        }
+    }
+
     const actionName = action === 'validate' ? (currentValue ? 'Lock' : 'Activate') : 
                        action === 'parent_access' ? (currentValue ? 'Disable Parent' : 'Enable Parent') : 'Update';
     
-    if (!confirm(`Are you sure you want to ${actionName} this student?`)) return;
+    if (!confirm(\`Are you sure you want to \${actionName} this student?\`)) return;
     
     try {
       await api.post('/schmngt/update-student', { studentId: id, action, value: !currentValue }, token);
@@ -123,12 +138,33 @@ const AdminDashboard = () => {
     } catch (err) { alert('Failed to update status'); }
   };
 
+  // --- PAYMENT BYPASS ---
+  const bypassPayment = async (student) => {
+      const confirmMsg = \`MANUAL VERIFICATION\n\nAre you sure you want to mark \${student.surname}'s payment as COMPLETE (Paid)?\n\nThis will unlock their portal immediately.\`;
+      if(!confirm(confirmMsg)) return;
+
+      try {
+          await api.post('/schmngt/update-student', { 
+              studentId: student.id, 
+              action: 'payment_status', 
+              value: 'paid' 
+          }, token);
+
+          alert("Success: Payment Manually Verified.");
+          
+          // Update local state
+          setStudents(prev => prev.map(s => s.id === student.id ? { ...s, payment_status: 'paid' } : s));
+      } catch (err) {
+          alert("Failed to bypass payment: " + err.message);
+      }
+  };
+
   const deleteStudent = async (id) => {
     const confirmMsg = "⚠️ DANGER: This will PERMANENTLY DELETE the student and ALL their records (Results, Payments, etc).\n\nAre you absolutely sure?";
     if (!confirm(confirmMsg)) return;
 
     try {
-       await api.delete(`/schmngt/students/${id}`, token);
+       await api.delete(\`/schmngt/students/\${id}\`, token);
        alert("Student Deleted Successfully");
        setStudents(prev => prev.filter(s => s.id !== id));
     } catch (err) { 
@@ -192,7 +228,7 @@ const AdminDashboard = () => {
         session: '2025/2026'
       }, token);
       
-      alert(`Result for ${scoreData.subject} Saved Successfully!`);
+      alert(\`Result for \${scoreData.subject} Saved Successfully!\`);
       setScoreData({ subject: '', ca: '', exam: '' }); 
     } catch(err) { 
       alert("Failed: " + err.message); 
@@ -205,17 +241,51 @@ const AdminDashboard = () => {
     try {
       const res = await api.post('/schmngt/generate-code', {}, token);
       navigator.clipboard.writeText(res.code);
-      alert(`NEW TOKEN GENERATED: ${res.code}\n\n(Copied to clipboard)`);
+      alert(\`NEW TOKEN GENERATED: \${res.code}\n\n(Copied to clipboard)\`);
     } catch (err) { alert('Failed to generate code'); }
   };
 
-  const sendBroadcast = async () => {
+  // Broadcast Logic: Send / Edit / Delete
+  const handleBroadcastSubmit = async () => {
     if (!broadcast.title || !broadcast.message) return alert("Fill all fields");
+    
     try {
-      await api.post('/schmngt/broadcast', broadcast, token);
-      alert('Broadcast Sent Successfully!');
+      if (isEditingBroadcast && editingId) {
+          // Edit Mode (Implemented via delete + create as simpler approach or dedicated update)
+          // For robustness, we will use a generic 'broadcast' endpoint that handles upsert if ID provided, 
+          // or just delete old and create new. Let's assume create new for now to ensure delivery.
+          // Real Update:
+          await api.put(\`/schmngt/broadcast/\${editingId}\`, broadcast, token);
+          alert('Broadcast Updated Successfully!');
+      } else {
+          // Create Mode
+          await api.post('/schmngt/broadcast', broadcast, token);
+          alert('Broadcast Sent Successfully!');
+      }
+      
       setBroadcast({ title: '', message: '', target: 'all' });
-    } catch (err) { alert('Failed to send broadcast'); }
+      setIsEditingBroadcast(false);
+      setEditingId(null);
+      // Refresh list
+      const msgs = await api.get('/students/announcements', token);
+      setBroadcastList(msgs || []);
+
+    } catch (err) { alert('Failed to process broadcast: ' + err.message); }
+  };
+
+  const prepareEditBroadcast = (msg) => {
+      setBroadcast({ title: msg.title, message: msg.message, target: msg.target_audience });
+      setEditingId(msg.id);
+      setIsEditingBroadcast(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteBroadcast = async (id) => {
+      if(!confirm("Delete this broadcast? It will be removed from all student/staff dashboards.")) return;
+      try {
+          await api.delete(\`/schmngt/broadcast/\${id}\`, token);
+          setBroadcastList(prev => prev.filter(b => b.id !== id));
+      } catch(err) { alert("Failed to delete"); }
   };
 
   // --- RENDER LOADERS ---
@@ -232,12 +302,12 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800 relative">
       
       {/* --- SIDEBAR --- */}
-      <aside className={`
+      <aside className={\`
         bg-slate-900 text-white flex flex-col fixed h-full z-30 shadow-2xl transition-all duration-300
-        ${sidebarOpen ? 'w-64' : 'w-20'}
-      `}>
+        \${sidebarOpen ? 'w-64' : 'w-20'}
+      \`}>
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-           <div className={`flex items-center gap-3 transition-opacity ${!sidebarOpen && 'opacity-0 hidden'}`}>
+           <div className={\`flex items-center gap-3 transition-opacity \${!sidebarOpen && 'opacity-0 hidden'}\`}>
              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden">
                 <img src="/meritlogo.jpg" alt="Logo" className="w-full h-full object-cover" />
              </div>
@@ -265,7 +335,7 @@ const AdminDashboard = () => {
         <div className="p-4 border-t border-slate-800">
           <button 
             onClick={()=>{logout(); navigate('/');}} 
-            className={`flex items-center gap-3 text-red-300 hover:text-white hover:bg-slate-800 transition w-full p-2 rounded ${!sidebarOpen && 'justify-center'}`}
+            className={\`flex items-center gap-3 text-red-300 hover:text-white hover:bg-slate-800 transition w-full p-2 rounded \${!sidebarOpen && 'justify-center'}\`}
             title="Logout"
           >
             <LogOut size={20}/> 
@@ -275,7 +345,7 @@ const AdminDashboard = () => {
       </aside>
 
       {/* --- MAIN CONTENT --- */}
-      <main className={`flex-1 p-8 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
+      <main className={\`flex-1 p-8 transition-all duration-300 \${sidebarOpen ? 'ml-64' : 'ml-20'}\`}>
         
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
           <div>
@@ -309,7 +379,7 @@ const AdminDashboard = () => {
           <div className="space-y-8 animate-fadeIn">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard label="Total Students" value={stats?.totalStudents} icon={<Users/>} color="blue" />
-              <StatCard label="Total Revenue" value={`₦${stats?.totalRevenue?.toLocaleString()}`} icon={<DollarSign/>} color="green" />
+              <StatCard label="Total Revenue" value={\`₦\${stats?.totalRevenue?.toLocaleString()}\`} icon={<DollarSign/>} color="green" />
               <StatCard label="Staff Count" value={stats?.totalStaff} icon={<Shield/>} color="purple" />
               <StatCard label="Pending Approval" value={stats?.pendingValidation} icon={<AlertTriangle/>} color="orange" />
             </div>
@@ -390,9 +460,13 @@ const AdminDashboard = () => {
                                 <span className="inline-flex items-center gap-1.5 text-green-700 font-bold bg-green-100 px-3 py-1 rounded-full text-xs">
                                   <CheckCircle size={14}/> PAID
                                 </span> : 
-                                <span className="inline-flex items-center gap-1.5 text-red-700 font-bold bg-red-100 px-3 py-1 rounded-full text-xs">
-                                  <XCircle size={14}/> PENDING
-                                </span>
+                                <button 
+                                  onClick={() => bypassPayment(s)}
+                                  className="inline-flex items-center gap-1.5 text-red-700 font-bold bg-red-100 hover:bg-red-200 px-3 py-1 rounded-full text-xs transition border border-red-200"
+                                  title="Click to Manually Approve Payment (Bypass)"
+                                >
+                                  <XCircle size={14}/> PENDING (Approve)
+                                </button>
                               }
                             </td>
                             <td className="p-5">
@@ -402,14 +476,20 @@ const AdminDashboard = () => {
                             <td className="p-5">
                               <div className="flex gap-2">
                                 <button 
-                                  onClick={() => toggleStudentStatus(s.id, 'validate', s.is_validated)} 
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${s.is_validated ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                  onClick={() => toggleStudentStatus(s.id, 'validate', s.is_validated, s)} 
+                                  disabled={s.payment_status === 'paid' && s.is_validated}
+                                  className={\`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors \${
+                                      s.is_validated 
+                                        ? (s.payment_status === 'paid' ? 'bg-green-100 text-green-700 opacity-50 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200')
+                                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                  }\`}
+                                  title={s.payment_status === 'paid' && s.is_validated ? "Cannot Lock Paid Student" : "Toggle Access"}
                                 >
-                                  {s.is_validated ? 'Active' : 'Locked'}
+                                  {s.is_validated ? (s.payment_status === 'paid' ? 'Unlocked (Paid)' : 'Active') : 'Locked'}
                                 </button>
                                 <button 
                                   onClick={() => toggleStudentStatus(s.id, 'parent_access', s.is_parent_access_enabled)} 
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${s.is_parent_access_enabled ? 'bg-teal-100 text-teal-700 hover:bg-teal-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                  className={\`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors \${s.is_parent_access_enabled ? 'bg-teal-100 text-teal-700 hover:bg-teal-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}\`}
                                 >
                                   Parents
                                 </button>
@@ -444,7 +524,7 @@ const AdminDashboard = () => {
                   <div 
                     key={s.id} 
                     onClick={() => handleStudentSelectForResult(s)} 
-                    className={`p-4 rounded-xl cursor-pointer transition border ${selectedStudentForResults?.id === s.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}`}
+                    className={\`p-4 rounded-xl cursor-pointer transition border \${selectedStudentForResults?.id === s.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}\`}
                   >
                     <div className="font-bold text-slate-900">{s.surname} {s.first_name}</div>
                     <div className="text-xs text-slate-500 font-mono mt-1">{s.student_id_text} • {s.department}</div>
@@ -460,7 +540,7 @@ const AdminDashboard = () => {
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">Selected Student</label>
                   <div className="font-bold text-lg text-slate-800">
-                    {selectedStudentForResults ? `${selectedStudentForResults.surname} ${selectedStudentForResults.first_name}` : <span className="text-slate-400 italic">None Selected</span>}
+                    {selectedStudentForResults ? \`\${selectedStudentForResults.surname} \${selectedStudentForResults.first_name}\` : <span className="text-slate-400 italic">None Selected</span>}
                   </div>
                 </div>
 
@@ -509,7 +589,7 @@ const AdminDashboard = () => {
                 <button 
                   onClick={uploadResult} 
                   disabled={!selectedStudentForResults || !scoreData.subject} 
-                  className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${!selectedStudentForResults || !scoreData.subject ? 'bg-slate-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1'}`}
+                  className={\`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all \${!selectedStudentForResults || !scoreData.subject ? 'bg-slate-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1'}\`}
                 >
                   Upload Result to Portal
                 </button>
@@ -534,10 +614,10 @@ const AdminDashboard = () => {
                     <td className="p-5 text-slate-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
                     <td className="p-5 font-medium">{log.student_name}</td>
                     <td className="p-5">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+                      <span className={\`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide \${
                         log.action.includes('payment') ? 'bg-green-100 text-green-700' : 
                         log.action.includes('register') ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
-                      }`}>
+                      }\`}>
                         {log.action.replace('_', ' ')}
                       </span>
                     </td>
@@ -590,28 +670,62 @@ const AdminDashboard = () => {
         )}
 
         {activeTab === 'broadcast' && (
-          <div className="max-w-2xl mx-auto bg-white p-10 rounded-2xl shadow-sm border border-slate-200 animate-fadeIn">
-            <h3 className="font-bold text-2xl mb-8 text-slate-900 border-b pb-4 flex items-center gap-2"><Bell size={24}/> Send Broadcast</h3>
-            <div className="space-y-6">
-              <div>
-                <label className="label-text">Message Title</label>
-                <input className="input-field w-full" placeholder="e.g. Resumption Date" value={broadcast.title} onChange={e => setBroadcast({...broadcast, title: e.target.value})} />
-              </div>
-              <div>
-                <label className="label-text">Message Body</label>
-                <textarea className="input-field w-full h-40 resize-none p-4" placeholder="Type your announcement here..." value={broadcast.message} onChange={e => setBroadcast({...broadcast, message: e.target.value})} />
-              </div>
-              <div>
-                <label className="label-text">Target Audience</label>
-                <select className="input-field w-full" value={broadcast.target} onChange={e => setBroadcast({...broadcast, target: e.target.value})}>
-                  <option value="all">Everyone (Staff & Students)</option>
-                  <option value="student">Students Only</option>
-                  <option value="staff">Staff Only</option>
-                </select>
-              </div>
-              <button onClick={sendBroadcast} className="w-full py-4 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">
-                Send Broadcast
-              </button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fadeIn">
+            <div className="bg-white p-10 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-2xl mb-8 text-slate-900 border-b pb-4 flex items-center gap-2">
+                    <Bell size={24}/> {isEditingBroadcast ? 'Edit Broadcast' : 'Send Broadcast'}
+                </h3>
+                <div className="space-y-6">
+                <div>
+                    <label className="label-text">Message Title</label>
+                    <input className="input-field w-full" placeholder="e.g. Resumption Date" value={broadcast.title} onChange={e => setBroadcast({...broadcast, title: e.target.value})} />
+                </div>
+                <div>
+                    <label className="label-text">Message Body</label>
+                    <textarea className="input-field w-full h-40 resize-none p-4" placeholder="Type your announcement here..." value={broadcast.message} onChange={e => setBroadcast({...broadcast, message: e.target.value})} />
+                </div>
+                <div>
+                    <label className="label-text">Target Audience</label>
+                    <select className="input-field w-full" value={broadcast.target} onChange={e => setBroadcast({...broadcast, target: e.target.value})}>
+                    <option value="all">Everyone (Staff & Students)</option>
+                    <option value="student">Students Only</option>
+                    <option value="staff">Staff Only</option>
+                    </select>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={handleBroadcastSubmit} className="flex-1 py-4 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">
+                        {isEditingBroadcast ? 'Update Message' : 'Send Broadcast'} <Send size={18}/>
+                    </button>
+                    {isEditingBroadcast && (
+                        <button onClick={() => { setIsEditingBroadcast(false); setBroadcast({ title:'', message:'', target:'all' }); }} className="px-4 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition">
+                            Cancel
+                        </button>
+                    )}
+                </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 h-[600px] flex flex-col">
+                <h3 className="font-bold text-xl mb-6 text-slate-900">Recent Broadcasts</h3>
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                    {broadcastList.length === 0 ? <p className="text-slate-400 text-center py-10">No broadcasts found.</p> : 
+                    broadcastList.map(msg => (
+                        <div key={msg.id} className="p-5 bg-slate-50 rounded-xl border border-slate-100 group hover:border-blue-200 transition">
+                            <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-slate-800">{msg.title}</h4>
+                                <span className="text-[10px] uppercase font-bold text-slate-400 bg-white px-2 py-1 rounded border">{msg.target_audience}</span>
+                            </div>
+                            <p className="text-sm text-slate-600 line-clamp-3 mb-4">{msg.message}</p>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-400">{new Date(msg.created_at).toLocaleDateString()}</span>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => prepareEditBroadcast(msg)} className="text-blue-600 font-bold hover:underline flex items-center gap-1"><Edit size={12}/> Edit</button>
+                                    <button onClick={() => deleteBroadcast(msg.id)} className="text-red-500 font-bold hover:underline flex items-center gap-1"><Trash2 size={12}/> Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
           </div>
         )}
@@ -628,11 +742,11 @@ const AdminDashboard = () => {
 const TabBtn = ({ icon, label, active, expanded, onClick }) => (
   <button 
     onClick={onClick} 
-    className={`
+    className={\`
       flex items-center gap-4 px-4 py-3 rounded-xl w-full text-left transition-all duration-200
-      ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
-      ${!expanded && 'justify-center px-2'}
-    `}
+      \${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
+      \${!expanded && 'justify-center px-2'}
+    \`}
     title={!expanded ? label : ''}
   >
     <div className={active ? 'text-white' : ''}>{icon}</div>
@@ -648,12 +762,12 @@ const StatCard = ({ label, value, icon, color }) => {
     orange: 'bg-orange-50 text-orange-600 border-orange-100'
   };
   return (
-    <div className={`p-6 rounded-2xl shadow-sm border ${colors[color].replace('bg-', 'border-').split(' ')[2]} bg-white flex items-center justify-between group hover:shadow-md transition-all`}>
+    <div className={\`p-6 rounded-2xl shadow-sm border \${colors[color].replace('bg-', 'border-').split(' ')[2]} bg-white flex items-center justify-between group hover:shadow-md transition-all\`}>
       <div>
         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
         <p className="text-3xl font-black text-slate-900">{value || 0}</p>
       </div>
-      <div className={`p-4 rounded-xl ${colors[color]} group-hover:scale-110 transition-transform`}>{icon}</div>
+      <div className={\`p-4 rounded-xl \${colors[color]} group-hover:scale-110 transition-transform\`}>{icon}</div>
     </div>
   );
 };
@@ -666,7 +780,7 @@ const ActionButton = ({ onClick, icon, label, color }) => {
     green: 'bg-green-50 text-green-700 hover:bg-green-600 hover:text-white'
   };
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-300 ${colors[color]} shadow-sm hover:shadow-lg`}>
+    <button onClick={onClick} className={\`flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-300 \${colors[color]} shadow-sm hover:shadow-lg\`}>
       <div className="mb-3 transform scale-125">{icon}</div>
       <span className="font-bold text-xs uppercase tracking-wide text-center">{label}</span>
     </button>
@@ -680,7 +794,7 @@ const ProgressBar = ({ label, count, total, color }) => (
       <span className="text-xs font-bold text-slate-400">{count || 0} Students</span>
     </div>
     <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full ${color}`} style={{ width: `${total ? (count / total) * 100 : 0}%` }}></div>
+      <div className={\`h-full rounded-full \${color}\`} style={{ width: \`\${total ? (count / total) * 100 : 0}%\` }}></div>
     </div>
   </div>
 );

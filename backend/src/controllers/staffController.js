@@ -39,8 +39,7 @@ exports.registerStaff = async (req, res) => {
     if (authError) throw authError;
     const userId = authData.user.id;
 
-    // 3. FORCE ROLE FIX: Update Profile & Delete Student Entry
-    // This is the CRITICAL fix for "Staff falling as Student"
+    // 3. FORCE ROLE FIX: Update Profile
     await supabase.from('profiles').upsert({
         id: userId,
         email: email,
@@ -48,7 +47,7 @@ exports.registerStaff = async (req, res) => {
         full_name: fullName
     });
 
-    // Remove the auto-created student record immediately
+    // Remove any accidental student record
     await supabase.from('students').delete().eq('id', userId);
 
     // 4. Create Staff Record
@@ -72,7 +71,6 @@ exports.registerStaff = async (req, res) => {
       }]);
 
     if (staffError) {
-      // Rollback if staff creation fails
       await supabase.auth.admin.deleteUser(userId);
       throw staffError;
     }
@@ -112,11 +110,23 @@ exports.staffLogin = async (req, res) => {
   }
 };
 
+// FIXED: Filter students by Staff's Department
 exports.getMyStudents = async (req, res) => {
-    // Placeholder logic
     try {
-        const { data, error } = await supabase.from('students').select('*');
+        // req.staff is populated by the verifyStaff middleware
+        const staffDept = req.staff?.department;
+
+        let query = supabase.from('students').select('*').order('surname');
+
+        // If staff belongs to a specific department (Science/Art/Commercial), filter by it.
+        // If staff department is 'General' or null, they might see all (optional).
+        if (staffDept && staffDept !== 'General') {
+            query = query.eq('department', staffDept);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
+        
         res.json(data);
     } catch (err) {
         res.status(500).json({ error: err.message });

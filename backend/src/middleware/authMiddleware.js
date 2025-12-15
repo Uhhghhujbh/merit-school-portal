@@ -1,5 +1,6 @@
 const supabase = require('../config/supabaseClient');
 
+// --- 1. VERIFY ADMIN ---
 const verifyAdmin = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -32,6 +33,7 @@ const verifyAdmin = async (req, res, next) => {
   }
 };
 
+// --- 2. VERIFY STAFF ---
 const verifyStaff = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -44,19 +46,11 @@ const verifyStaff = async (req, res, next) => {
 
     const email = user.email.trim().toLowerCase();
 
-    // A. Check if Admin (Admins are automatically allowed)
-    const { data: adminEntry } = await supabase
-      .from('admin_allowlist')
-      .select('email')
-      .ilike('email', email)
-      .maybeSingle();
+    // Check Admin (Admins can act as Staff)
+    const { data: adminEntry } = await supabase.from('admin_allowlist').select('email').ilike('email', email).maybeSingle();
 
-    // B. Check if Staff (Fetch profile even if Admin, to get department/name)
-    const { data: staffProfile } = await supabase
-      .from('staff')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
+    // Check Staff Profile
+    const { data: staffProfile } = await supabase.from('staff').select('*').eq('id', user.id).maybeSingle();
 
     if (adminEntry) {
       req.user = user;
@@ -80,4 +74,26 @@ const verifyStaff = async (req, res, next) => {
   }
 };
 
-module.exports = { verifyAdmin, verifyStaff };
+// --- 3. VERIFY STUDENT (MISSING PIECE) ---
+const verifyStudent = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) return res.status(401).json({ error: 'Invalid token' });
+
+    // Attach user to request so Controller can read 'req.user.id'
+    req.user = user;
+    req.role = 'student';
+    next();
+
+  } catch (err) {
+    console.error("Student Auth Error:", err);
+    res.status(500).json({ error: 'Server Authentication Error' });
+  }
+};
+
+module.exports = { verifyAdmin, verifyStaff, verifyStudent };

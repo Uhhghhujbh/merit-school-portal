@@ -30,7 +30,7 @@ const StudentDashboard = () => {
   
   // Payment State
   const [paymentMethod, setPaymentMethod] = useState('card'); // 'card' or 'transfer'
-  const [manual specificRef, setManualRef] = useState('');
+  const [manualRef, setManualRef] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
   // --- REFS FOR PRINTING ---

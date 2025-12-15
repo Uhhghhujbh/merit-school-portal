@@ -26,7 +26,6 @@ const app = express();
 app.use(helmet());
 
 // --- 2. RATE LIMITING (DoS Protection) ---
-// Limit requests to 100 per 15 minutes per IP
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 100, 
@@ -42,20 +41,32 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// --- 4. BODY PARSER (Size Limits) ---
-// Global limit is small (10kb) to prevent overflow attacks
-app.use(express.json({ limit: '10kb' })); 
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+// --- 4. DYNAMIC BODY PARSER (THE FIX) ---
+// This replaces the global 10kb limit. 
+// It allows 50mb ONLY for registration routes, and 10kb for everything else.
+const dynamicBodyParser = (req, res, next) => {
+  // Check if the URL is for registration (Student, Staff, or Auth)
+  const isRegistration = req.path.includes('/register');
+  
+  const limit = isRegistration ? '50mb' : '10kb';
+  
+  express.json({ limit })(req, res, next);
+};
+
+const dynamicUrlParser = (req, res, next) => {
+  const isRegistration = req.path.includes('/register');
+  const limit = isRegistration ? '50mb' : '10kb';
+  express.urlencoded({ extended: true, limit })(req, res, next);
+};
+
+app.use(dynamicBodyParser);
+app.use(dynamicUrlParser);
 
 // --- 5. DATA SANITIZATION ---
-app.use(xss()); // Cleans user input from malicious HTML/Scripts
-app.use(hpp()); // Prevents HTTP Parameter Pollution
+app.use(xss()); 
+app.use(hpp()); 
 
 app.use(morgan('dev'));
-
-// --- SPECIAL ROUTE FOR LARGE UPLOADS (e.g. Student Registration Photos) ---
-// We apply a larger limit ONLY to specific routes
-const largeUploadHandler = express.json({ limit: '50mb' });
 
 // --- Health Check Route ---
 app.get('/', (req, res) => {
@@ -67,17 +78,13 @@ app.get('/', (req, res) => {
 });
 
 // --- API Routes ---
+// Note: We removed the "Special Route" blocks because the Dynamic Parser above handles it automatically.
+// This prevents the "404 Route Mismatch" errors.
+
 app.use('/api/schmngt', adminRoutes);
-
-// Apply large upload limit to student/staff registration only
-app.use('/api/auth/student/register', largeUploadHandler, authRoutes); 
-app.use('/api/students/register', largeUploadHandler, studentRoutes);
-app.use('/api/staff/register', largeUploadHandler, staffRoutes);
-
-// Standard routes
 app.use('/api/auth', authRoutes);
-app.use('/api/students', studentRoutes); // Other student routes
-app.use('/api/staff', staffRoutes);      // Other staff routes
+app.use('/api/students', studentRoutes);
+app.use('/api/staff', staffRoutes);
 app.use('/api/parents', parentRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/results', resultRoutes);
@@ -86,7 +93,7 @@ app.use('/api/activity-logs', activityLogRoutes);
 // --- Global Error Handling ---
 app.use((err, req, res, next) => {
   console.error('🔥 Server Error:', err.stack);
-  
+
   const statusCode = err.statusCode || 500;
   const errorMessage = process.env.NODE_ENV === 'production' 
     ? 'Internal Server Error' 
@@ -106,6 +113,6 @@ app.listen(PORT, () => {
   console.log(`🚀 SERVER RUNNING (SECURE MODE)`);
   console.log(`📡 URL: http://localhost:${PORT}`);
   console.log(`🔒 Mode: ${process.env.NODE_ENV || 'Development'}`);
-  console.log(`🛡️  Rate Limiting & XSS Protection Active`);
+  console.log(`🛡️  Rate Limiting, XSS & Dynamic Upload Limits Active`);
   console.log(`==================================================\n`);
 });

@@ -1,5 +1,7 @@
 const supabase = require('../config/supabaseClient');
 
+// ... (Keep existing getStudentProfile and getAnnouncements functions) ...
+
 // 1. GET STUDENT PROFILE
 exports.getStudentProfile = async (req, res) => {
   try {
@@ -38,7 +40,7 @@ exports.getAnnouncements = async (req, res) => {
   }
 };
 
-// 3. *** SECURE PAYMENT VERIFICATION ***
+// 3. *** SECURE PAYMENT VERIFICATION (UPDATED) ***
 exports.verifyPayment = async (req, res) => {
   const { transaction_id, student_id } = req.body;
 
@@ -47,7 +49,21 @@ exports.verifyPayment = async (req, res) => {
   }
   
   try {
-    // A. Verify with Flutterwave
+    // --- STEP A: REPLAY ATTACK CHECK ---
+    // Check if this transaction ID already exists in our payments table
+    const { data: existingPayment } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('reference', transaction_id.toString()) // Flutterwave ID or Tx Ref
+        .eq('status', 'successful')
+        .maybeSingle();
+
+    if (existingPayment) {
+        console.warn(`REPLAY ATTACK BLOCKED: Transaction ${transaction_id} already used.`);
+        return res.status(409).json({ error: "This transaction has already been used." });
+    }
+
+    // --- STEP B: Verify with Flutterwave ---
     const flwUrl = `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
     const response = await fetch(flwUrl, {
         method: 'GET',
@@ -65,7 +81,7 @@ exports.verifyPayment = async (req, res) => {
 
     const { amount, currency, tx_ref } = flwData.data;
 
-    // B. Fetch Student & System Settings (To verify Amount)
+    // --- STEP C: Validate Student & Fee ---
     const { data: student, error: studentError } = await supabase
         .from('students')
         .select('*')
@@ -80,13 +96,12 @@ exports.verifyPayment = async (req, res) => {
         
     if (settingsError) throw settingsError;
 
-    // C. Determine Expected Fee
     let expectedFee = 0;
     if (student.program_type === 'JAMB') expectedFee = Number(settings.find(s => s.key === 'fee_jamb')?.value || 0);
     else if (student.program_type === 'A-Level') expectedFee = Number(settings.find(s => s.key === 'fee_alevel')?.value || 0);
     else expectedFee = Number(settings.find(s => s.key === 'fee_olevel')?.value || 0);
 
-    // D. *** SECURITY CHECKS ***
+    // --- STEP D: SECURITY INTEGRITY CHECKS ---
     if (currency !== 'NGN') {
         return res.status(400).json({ error: "Invalid currency. Payment must be in NGN." });
     }
@@ -96,12 +111,13 @@ exports.verifyPayment = async (req, res) => {
         return res.status(400).json({ error: `Insufficient Payment. You paid ₦${amount} but the fee is ₦${expectedFee}.` });
     }
 
+    // Verify Ownership (tx_ref contains student ID)
     if (!tx_ref.includes(student_id)) {
         console.warn(`FRAUD ATTEMPT: Student ${student_id} used receipt ${tx_ref} belonging to someone else.`);
         return res.status(400).json({ error: "Invalid Receipt. This payment does not belong to your account." });
     }
 
-    // E. Update Database
+    // --- STEP E: Update Database ---
     const { error: updateError } = await supabase
         .from('students')
         .update({ payment_status: 'paid' })
@@ -109,12 +125,13 @@ exports.verifyPayment = async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // Log the successful payment
+    // Log the successful payment to prevent reuse
     await supabase.from('payments').insert([{
         student_id: student_id,
         amount: amount,
-        reference: tx_ref,
-        status: 'successful'
+        reference: transaction_id.toString(), // Store the Transaction ID to block replay
+        status: 'successful',
+        channel: 'flutterwave'
     }]);
 
     res.json({ message: 'Payment Verified Successfully' });
@@ -125,7 +142,8 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-// 4. SUBMIT MANUAL PAYMENT (NEW)
+// ... (Keep existing submitManualPayment and getSchoolFees) ...
+// 4. SUBMIT MANUAL PAYMENT
 exports.submitManualPayment = async (req, res) => {
     const { student_id, reference, amount } = req.body;
     
@@ -143,8 +161,6 @@ exports.submitManualPayment = async (req, res) => {
 
         if (error) throw error;
 
-        // Note: We do NOT update student status to 'paid' here. Admin must approve.
-        
         await supabase.from('activity_logs').insert([{
             student_id,
             student_name: 'Student User',
@@ -167,7 +183,6 @@ exports.getSchoolFees = async (req, res) => {
     const { data, error } = await supabase.from('system_settings').select('*');
     if (error) throw error;
 
-    // Convert array to object { fee_jamb: 15000, ... }
     const fees = {};
     data.forEach(item => fees[item.key] = Number(item.value));
     res.json(fees);

@@ -1,7 +1,4 @@
-{
-type: "file_content_replacement",
-fileName: "uhhghhujbh/merit-school-portal/merit-school-portal-a4a74196d9139b068ba5538c081690a51cba6ee2/backend/src/controllers/studentController.js",
-fullContent: `const supabase = require('../config/supabaseClient');
+const supabase = require('../config/supabaseClient');
 
 // 1. GET STUDENT PROFILE
 exports.getStudentProfile = async (req, res) => {
@@ -51,12 +48,12 @@ exports.verifyPayment = async (req, res) => {
   
   try {
     // A. Verify with Flutterwave
-    const flwUrl = \`https://api.flutterwave.com/v3/transactions/\${transaction_id}/verify\`;
+    const flwUrl = `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`;
     const response = await fetch(flwUrl, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': \`Bearer \${process.env.FLUTTERWAVE_SECRET_KEY}\`
+            'Authorization': `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`
         }
     });
     
@@ -90,24 +87,17 @@ exports.verifyPayment = async (req, res) => {
     else expectedFee = Number(settings.find(s => s.key === 'fee_olevel')?.value || 0);
 
     // D. *** SECURITY CHECKS ***
-    
-    // 1. Check Currency
     if (currency !== 'NGN') {
         return res.status(400).json({ error: "Invalid currency. Payment must be in NGN." });
     }
 
-    // 2. Check Amount (Allowing small difference for fees if necessary, or strict equality)
-    // Using >= to ensure they paid AT LEAST the fee.
     if (amount < expectedFee) {
-        console.warn(\`FRAUD ATTEMPT: Student \${student_id} paid \${amount} but expected \${expectedFee}\`);
-        return res.status(400).json({ error: \`Insufficient Payment. You paid ₦\${amount} but the fee is ₦\${expectedFee}.\` });
+        console.warn(`FRAUD ATTEMPT: Student ${student_id} paid ${amount} but expected ${expectedFee}`);
+        return res.status(400).json({ error: `Insufficient Payment. You paid ₦${amount} but the fee is ₦${expectedFee}.` });
     }
 
-    // 3. Check Ownership (Prevent using another student's receipt or external receipt)
-    // The frontend generates tx_ref as \`MCAS-\${Date.now()}-\${user.id}\`
-    // So we check if the tx_ref contains the student_id
     if (!tx_ref.includes(student_id)) {
-        console.warn(\`FRAUD ATTEMPT: Student \${student_id} used receipt \${tx_ref} belonging to someone else.\`);
+        console.warn(`FRAUD ATTEMPT: Student ${student_id} used receipt ${tx_ref} belonging to someone else.`);
         return res.status(400).json({ error: "Invalid Receipt. This payment does not belong to your account." });
     }
 
@@ -127,15 +117,6 @@ exports.verifyPayment = async (req, res) => {
         status: 'successful'
     }]);
 
-    await supabase.from('activity_logs').insert([{
-        student_id: student_id,
-        student_name: 'System Payment',
-        student_id_text: 'PAYMENT',
-        action: 'payment_verified_secure',
-        ip_address: '0.0.0.0',
-        device_info: \`Amount: \${amount}\`
-    }]);
-
     res.json({ message: 'Payment Verified Successfully' });
 
   } catch (err) {
@@ -144,7 +125,43 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-// 4. GET SCHOOL FEES
+// 4. SUBMIT MANUAL PAYMENT (NEW)
+exports.submitManualPayment = async (req, res) => {
+    const { student_id, reference, amount } = req.body;
+    
+    try {
+        if (!student_id || !reference) return res.status(400).json({ error: "Missing details" });
+
+        // Log into payments table as 'pending'
+        const { error } = await supabase.from('payments').insert([{
+            student_id,
+            amount: amount || 0,
+            reference: reference, // This will be the user's manual input
+            status: 'pending_manual',
+            channel: 'manual_transfer'
+        }]);
+
+        if (error) throw error;
+
+        // Note: We do NOT update student status to 'paid' here. Admin must approve.
+        
+        await supabase.from('activity_logs').insert([{
+            student_id,
+            student_name: 'Student User',
+            student_id_text: 'MANUAL PAY',
+            action: 'payment_manual_submitted',
+            ip_address: req.ip || '0.0.0.0',
+            device_info: `Ref: ${reference}`
+        }]);
+
+        res.json({ message: "Manual payment submitted for review." });
+    } catch (err) {
+        console.error("Manual Payment Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// 5. GET SCHOOL FEES
 exports.getSchoolFees = async (req, res) => {
   try {
     const { data, error } = await supabase.from('system_settings').select('*');
@@ -159,5 +176,3 @@ exports.getSchoolFees = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-`
-}

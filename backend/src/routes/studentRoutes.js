@@ -2,19 +2,18 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const studentController = require('../controllers/studentController');
+const { verifyStudent } = require('../middleware/authMiddleware'); // Ensure this middleware exists
 
-// Registration
-router.post('/register', authController.registerStudent);
+// --- PUBLIC ROUTES ---
+// This handles api.post('/students/register')
+router.post('/register', authController.registerStudent); 
 
-// Profile & Data
-router.get('/profile/:id', studentController.getStudentProfile);
-router.get('/announcements', studentController.getAnnouncements);
-
-// Payment Verification
-router.post('/verify-payment', studentController.verifyPayment);
-router.post('/manual-payment', studentController.submitManualPayment); // Added Route
-
-// NEW FEES ROUTE
-router.get('/fees', studentController.getSchoolFees);
+// --- PROTECTED ROUTES ---
+// These require a valid Token
+router.get('/profile/:id', verifyStudent, studentController.getStudentProfile);
+router.get('/announcements', verifyStudent, studentController.getAnnouncements);
+router.get('/fees', verifyStudent, studentController.getSchoolFees);
+router.post('/verify-payment', verifyStudent, studentController.verifyPayment);
+router.post('/manual-payment', verifyStudent, studentController.submitManualPayment);
 
 module.exports = router;

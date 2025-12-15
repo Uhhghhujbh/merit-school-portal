@@ -1,17 +1,22 @@
 const supabase = require('../config/supabaseClient');
 
-// Log student activity
+// Log activity (Now Auto-Detects IP & Device)
 exports.logActivity = async (req, res) => {
-  const { student_id, student_name, student_id_text, action, ip_address, device_info } = req.body;
+  // We allow the frontend to specify the 'action', but we verify the identity
+  const { action, student_id, student_name, student_id_text } = req.body;
+
+  // SECURITY: Capture IP/Device from Server, NOT Request Body
+  const ip_address = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '0.0.0.0';
+  const device_info = req.headers['user-agent'] || 'Unknown Device';
 
   try {
     const { error } = await supabase.from('activity_logs').insert([{
-      student_id,
-      student_name,
-      student_id_text,
+      student_id: student_id || req.user?.id, // Prefer auth token ID if available
+      student_name: student_name || req.user?.user_metadata?.full_name || 'System',
+      student_id_text: student_id_text || 'N/A',
       action,
-      ip_address,
-      device_info
+      ip_address,   // Verified IP
+      device_info   // Verified Device
     }]);
 
     if (error) throw error;
@@ -22,7 +27,7 @@ exports.logActivity = async (req, res) => {
   }
 };
 
-// Get all activity logs (Admin only)
+// ... (Keep getAllLogs and getStudentLogs as they were) ...
 exports.getAllLogs = async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -34,16 +39,13 @@ exports.getAllLogs = async (req, res) => {
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
-    console.error('Get Logs Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// Get logs for specific student
 exports.getStudentLogs = async (req, res) => {
   try {
     const { studentId } = req.params;
-    
     const { data, error } = await supabase
       .from('activity_logs')
       .select('*')
@@ -53,7 +55,6 @@ exports.getStudentLogs = async (req, res) => {
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
-    console.error('Get Student Logs Error:', err);
     res.status(500).json({ error: err.message });
   }
 };

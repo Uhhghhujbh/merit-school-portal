@@ -12,8 +12,9 @@ router.get('/announcements', studentController.getAnnouncements);
 
 // Payment Verification
 router.post('/verify-payment', studentController.verifyPayment);
+router.post('/manual-payment', studentController.submitManualPayment); // Added Route
 
-// NEW FEES ROUTE (Fixes 404)
+// NEW FEES ROUTE
 router.get('/fees', studentController.getSchoolFees);
 
 module.exports = router;

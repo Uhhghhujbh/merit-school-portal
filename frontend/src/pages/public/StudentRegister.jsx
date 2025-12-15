@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Upload, X, CheckCircle, User, Book, FileText, Eye, EyeOff, 
   ChevronRight, ChevronLeft, Loader2, Printer, AlertTriangle, 
   ChevronDown, ChevronUp, Lock, Shield
 } from 'lucide-react';
+import { api } from '../../lib/api'; // Ensure API is imported
 
 // --- COMPONENTS MOVED OUTSIDE TO FIX KEYBOARD GLITCH ---
 
-const InputField = ({ label, value, onChange, type = "text", error }) => (
+const InputField = ({ label, value, onChange, type = "text", error, onBlur }) => (
   <div>
     <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>
     <input 
@@ -15,6 +17,7 @@ const InputField = ({ label, value, onChange, type = "text", error }) => (
       className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none transition ${error ? 'border-red-500 focus:border-red-500' : 'border-slate-200 focus:border-blue-500'}`} 
       value={value} 
       onChange={e => onChange(e.target.value)} 
+      onBlur={onBlur} // Added onBlur for email check
     />
     {error && <span className="text-red-500 text-xs font-bold mt-1 block">{error}</span>}
   </div>
@@ -35,7 +38,7 @@ const AccordionItem = ({ isOpen, title, icon: Icon, onToggle, children }) => {
         </div>
         {isOpen ? <ChevronUp/> : <ChevronDown/>}
       </button>
-      {isOpen && <div className="p-6 pt-0">{children}</div>}
+      {isOpen && <div className="p-6 pt-0 animate-fadeIn">{children}</div>}
     </div>
   );
 };
@@ -43,10 +46,8 @@ const AccordionItem = ({ isOpen, title, icon: Icon, onToggle, children }) => {
 const FormPreview = ({ formData }) => (
   <div className="text-sm leading-relaxed" style={{ fontFamily: 'Georgia, serif' }}>
     <div className="flex items-center gap-4 border-b-2 border-black pb-4 mb-6">
-      {/* Logo Removed as requested */}
-      <div className="w-20 h-20 rounded-full bg-blue-900 flex items-center justify-center text-white font-bold text-3xl">
-        M
-      </div>
+      {/* RESTORED LOGO AND MCAS HEADER */}
+      <img src="/meritlogo.jpg" alt="MCAS Logo" className="w-20 h-20 object-contain"/>
       <div className="text-center flex-1">
         <h1 className="text-2xl font-bold text-blue-900 uppercase">Merit College of Advanced Studies</h1>
         <p className="text-xs font-bold tracking-widest mt-1">KNOWLEDGE FOR ADVANCEMENT</p>
@@ -146,13 +147,14 @@ const FormPreview = ({ formData }) => (
     </div>
 
     <div className="text-center text-[10px] mt-8 text-slate-400">
-      Generated on {new Date().toLocaleString()} | Merit College Portal
+      Generated on {new Date().toLocaleString()} | Merit College Portal | Secure Registration System
     </div>
   </div>
 );
 
 // --- MAIN COMPONENT ---
 const StudentRegister = () => {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('personal');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -231,6 +233,23 @@ const StudentRegister = () => {
   const validatePhone = (phone) => /^0\d{10}$/.test(phone);
   const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+  // --- NEW: CHECK EMAIL EXISTENCE ---
+  const handleEmailBlur = async () => {
+    if (!formData.email || !validateEmail(formData.email)) return;
+    
+    try {
+      // Assuming you have this endpoint now
+      const res = await api.post('/auth/check-email', { email: formData.email });
+      if (res.exists) {
+         setErrors(prev => ({ ...prev, email: "This email is already registered." }));
+      } else {
+         setErrors(prev => ({ ...prev, email: null })); // Clear error if available
+      }
+    } catch (err) {
+      console.error("Email check failed:", err);
+    }
+  };
+
   const validatePersonal = () => {
     const newErrors = {};
     if (!formData.surname) newErrors.surname = "Surname is required";
@@ -238,12 +257,13 @@ const StudentRegister = () => {
 
     if (!formData.email) newErrors.email = "Email is required";
     else if (!validateEmail(formData.email)) newErrors.email = "Invalid Email Format";
+    else if (errors.email) newErrors.email = errors.email; // Keep existing error from API check
 
     if (!formData.studentPhone) newErrors.studentPhone = "Student Phone is required";
-    else if (!validatePhone(formData.studentPhone)) newErrors.studentPhone = "Invalid Phone";
+    else if (!validatePhone(formData.studentPhone)) newErrors.studentPhone = "Invalid Phone (Must be 11 digits)";
 
     if (!formData.parentsPhone) newErrors.parentsPhone = "Parent Phone is required";
-    else if (!validatePhone(formData.parentsPhone)) newErrors.parentsPhone = "Invalid Phone";
+    else if (!validatePhone(formData.parentsPhone)) newErrors.parentsPhone = "Invalid Phone (Must be 11 digits)";
 
     if (formData.studentPhone && formData.parentsPhone && formData.studentPhone === formData.parentsPhone) {
       newErrors.parentsPhone = "Parent phone cannot be the same as Student phone";
@@ -356,10 +376,16 @@ const StudentRegister = () => {
     setLoading(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const studentId = 'MCAS-' + Date.now().toString().slice(-6);
-      alert(`Success! Your Student ID: ${studentId}`);
-      console.log('Form submitted successfully:', { ...formData, password: '[REDACTED]' });
+      // Using Real Backend API Call now
+      const response = await api.post('/students/register', { 
+        ...formData, 
+        role: 'student' 
+      });
+      
+      // The backend will generate the ID: MCAS/DEPT/YEAR/4RAND
+      // We show what the backend returned
+      alert(`Success! Your Student ID: ${response.studentId}`);
+      navigate('/auth/student');
     } catch (error) {
       alert(`Error: ${error.message}`);
     } finally { 
@@ -377,6 +403,7 @@ const StudentRegister = () => {
             <style>
               body { font-family: serif; padding: 20mm; }
               @media print { @page { size: A4; margin: 10mm; } }
+              .logo { width: 80px; height: 80px; }
             </style>
           </head>
           <body>${printRef.current.innerHTML}</body>
@@ -391,8 +418,10 @@ const StudentRegister = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 py-10 px-4">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
 
-        {/* Clean Header - Removed Images & Security Badges */}
+        {/* RESTORED HEADER LOGO & TEXT */}
         <div className="bg-blue-900 px-8 py-8 text-white text-center">
+           {/* LOGO ADDED BACK */}
+           <img src="/meritlogo.jpg" alt="MCAS" className="w-20 h-20 rounded-full bg-white p-1 shadow-lg mx-auto mb-4 object-contain" />
            <h1 className="text-3xl font-black tracking-tight">STUDENT REGISTRATION</h1>
            <p className="text-blue-200 text-sm font-medium mt-1">Merit College of Advanced Studies • 2025/2026</p>
         </div>
@@ -438,7 +467,15 @@ const StudentRegister = () => {
                 </div>
 
                 <InputField label="Date of Birth" type="date" value={formData.dateOfBirth} onChange={v => setFormData({...formData, dateOfBirth: v})} error={errors.dateOfBirth} />
-                <InputField label="Email Address" type="email" value={formData.email} onChange={v => setFormData({...formData, email: v})} error={errors.email} />
+                {/* EMAIL FIELD WITH ONBLUR VALIDATION */}
+                <InputField 
+                    label="Email Address" 
+                    type="email" 
+                    value={formData.email} 
+                    onChange={v => setFormData({...formData, email: v})} 
+                    onBlur={handleEmailBlur} // TRIGGERS SUPABASE CHECK
+                    error={errors.email} 
+                />
 
                 <InputField label="Student Phone" type="tel" value={formData.studentPhone} onChange={v => setFormData({...formData, studentPhone: v})} error={errors.studentPhone} />
                 <InputField label="Parent Phone" type="tel" value={formData.parentsPhone} onChange={v => setFormData({...formData, parentsPhone: v})} error={errors.parentsPhone} />

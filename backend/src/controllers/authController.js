@@ -1,9 +1,13 @@
 const supabase = require('../config/supabaseClient');
 
-// HELPER: Upload Base64 to Supabase Storage
+/**
+ * HELPER: Upload Base64 Photo to Supabase Storage
+ * Ensures student photos are stored in the 'photos' bucket and returns a public URL.
+ */
 async function uploadPhoto(base64Data, userId) {
   if (!base64Data) return null;
   try {
+    // Remove Base64 header prefix
     const base64File = base64Data.split(';base64,').pop();
     const buffer = Buffer.from(base64File, 'base64');
     const path = `students/${userId}_${Date.now()}.jpg`;
@@ -17,10 +21,7 @@ async function uploadPhoto(base64Data, userId) {
 
     if (error) throw error;
 
-    const { data: urlData } = supabase.storage
-      .from('photos')
-      .getPublicUrl(path);
-      
+    const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path);
     return urlData.publicUrl;
   } catch (err) {
     console.error("Photo Upload Error:", err.message);
@@ -28,17 +29,50 @@ async function uploadPhoto(base64Data, userId) {
   }
 }
 
-// --- ADMIN LOGIN ---
+/**
+ * HELPER: Password Integrity Check
+ * Enforces a minimum of 6 characters and at least one digit.
+ */
+const validatePasswordStrength = (password) => {
+    const regex = /^(?=.*\d).{6,}$/;
+    return regex.test(password);
+};
+
+// --- 1. EMAIL VALIDATION (SUPABASE CHECK) ---
+// This allows the frontend to check if a Gmail exists before the full form is submitted.
+exports.checkEmailExists = async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required for validation." });
+
+  try {
+    // Check 'profiles' table which maps 1:1 with Auth Users
+    const { data, error } = await supabase
+      .from('profiles') 
+      .select('email')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+        return res.json({ exists: true, message: "This email address is already registered in our system." });
+    }
+    
+    return res.json({ exists: false });
+  } catch (err) {
+    console.error("Email Integrity Check Error:", err); 
+    res.status(500).json({ error: "Unable to verify email availability at this time." });
+  }
+};
+
+// --- 2. ADMIN LOGIN ---
+// Authenticates administrators and verifies they are in the 'admin_allowlist'.
 exports.adminLogin = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) return res.status(401).json({ error: 'Invalid Email or Password' });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return res.status(401).json({ error: 'Invalid Administrator Credentials' });
 
     const { data: adminEntry } = await supabase
       .from('admin_allowlist')
@@ -48,26 +82,22 @@ exports.adminLogin = async (req, res) => {
 
     if (!adminEntry) {
       await supabase.auth.signOut();
-      return res.status(403).json({ error: 'Access Denied: You are not an Administrator.' });
+      return res.status(403).json({ error: 'Access Denied: Your email is not authorized for Admin access.' });
     }
 
     res.json({
       message: 'Admin Login Successful',
       token: data.session.access_token,
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        role: 'admin'
-      }
+      user: { id: data.user.id, email: data.user.email, role: 'admin' }
     });
-
   } catch (err) {
-    console.error("Admin Login Error:", err);
-    res.status(500).json({ error: 'Server Error' });
+    console.error("Admin Auth Error:", err);
+    res.status(500).json({ error: 'Internal Server Security Error' });
   }
 };
 
-// --- STUDENT LOGIN ---
+// --- 3. STUDENT LOGIN ---
+// Allows login via Email or Alphanumeric Student ID.
 exports.studentLogin = async (req, res) => {
   const { identifier, password } = req.body;
   try {
@@ -80,12 +110,12 @@ exports.studentLogin = async (req, res) => {
         .ilike('student_id_text', identifier.trim())
         .maybeSingle();
         
-      if (!data) return res.status(404).json({ error: 'Student ID not found' });
+      if (!data) return res.status(404).json({ error: 'The provided Student ID was not found.' });
       email = data.email;
     }
 
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError) return res.status(401).json({ error: 'Invalid Password' });
+    if (authError) return res.status(401).json({ error: 'Invalid Password. Access Denied.' });
 
     const { data: profile, error: dbError } = await supabase
       .from('students')
@@ -94,26 +124,23 @@ exports.studentLogin = async (req, res) => {
       .maybeSingle();
     
     if (dbError) throw dbError;
-    if (!profile) return res.status(500).json({ error: 'Profile row missing. Contact Admin.' });
-
-    const { data: profileName } = await supabase.from('profiles').select('full_name').eq('id', authData.user.id).single();
-    if(profileName) profile.full_name = profileName.full_name;
+    if (!profile) return res.status(500).json({ error: 'Student profile record missing. Please contact the registrar.' });
 
     res.json({
       message: 'Login successful',
       token: authData.session.access_token,
-      user: profile
+      user: { ...profile, role: 'student' }
     });
   } catch (error) {
-    console.error("Login Error:", error);
+    console.error("Student Auth Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// --- REGISTER STUDENT (WITH ROLE INTEGRITY FIX) ---
+// --- 4. REGISTER STUDENT (SECURE INTEGRITY VERSION) ---
+// Implements Role checks, specific ID formatting, and Trusted Logging.
 exports.registerStudent = async (req, res) => {
   const clean = (val) => (val && val.trim() !== "" ? val : null);
-
   const { 
     email, password, surname, middleName, lastName, 
     programme, department, subjects, photoPreview,
@@ -121,60 +148,48 @@ exports.registerStudent = async (req, res) => {
     parentsPhone, studentPhone, university, course
   } = req.body;
 
+  let userId = null;
+
   try {
-    // SECURITY FIX: ROLE INTEGRITY CHECK
-    // 1. Check if email is an Admin
-    const { data: isAdmin } = await supabase
-      .from('admin_allowlist')
-      .select('email')
-      .ilike('email', email)
-      .maybeSingle();
-
-    if (isAdmin) {
-      return res.status(403).json({ error: "Unauthorized: Admin accounts cannot register as students." });
+    // SECURITY: Validate Password Strength
+    if (!validatePasswordStrength(password)) {
+        return res.status(400).json({ error: "Password is too weak. It must be at least 6 characters and include a number." });
     }
 
-    // 2. Check if email is Staff
-    const { data: isStaff } = await supabase
-      .from('staff')
-      .select('email')
-      .ilike('email', email)
-      .maybeSingle();
+    // ROLE INTEGRITY: Check if Admin exists with this email
+    const { data: isAdmin } = await supabase.from('admin_allowlist').select('email').ilike('email', email).maybeSingle();
+    if (isAdmin) return res.status(403).json({ error: "Unauthorized: Administrator emails cannot be used for Student registration." });
 
-    if (isStaff) {
-      return res.status(403).json({ error: "Unauthorized: Staff accounts cannot register as students." });
-    }
+    // ROLE INTEGRITY: Check if Staff exists with this email
+    const { data: isStaff } = await supabase.from('staff').select('email').ilike('email', email).maybeSingle();
+    if (isStaff) return res.status(403).json({ error: "Unauthorized: Staff emails cannot be used for Student registration." });
 
-    // 3. Create Auth User
+    // CREATE AUTH USER
     const fullName = `${surname} ${middleName} ${lastName}`.trim();
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
-      password: password || 'password123',
+      password: password,
       email_confirm: true,
       user_metadata: { full_name: fullName } 
     });
 
     if (authError) throw authError;
-    const userId = authData.user.id;
+    userId = authData.user.id;
 
-    // 4. Generate Student ID
+    // GENERATE SECURE STUDENT ID (Format: MCAS/DEPT/YEAR/4RAND)
     const year = new Date().getFullYear().toString().slice(-2);
-    const randAlpha = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const randDigits = Math.floor(1000 + Math.random() * 9000); 
     const deptMap = { 'Science': 'SCI', 'Art': 'ART', 'Commercial': 'BUS' };
     const deptCode = deptMap[department] || 'GEN';
-    const studentIdText = `MCAS/${deptCode}/${year}/${randAlpha}`; 
+    const studentIdText = `MCAS/${deptCode}/${year}/${randDigits}`; 
 
-    // 5. Upload Photo
+    // PHOTO UPLOADS
     const photoUrl = await uploadPhoto(photoPreview, userId);
 
-    // 6. Create Profile & Student Entries
-    await supabase.from('profiles').upsert({
-        id: userId,
-        email,
-        role: 'student',
-        full_name: fullName
-    });
+    // CREATE PROFILE ENTRY
+    await supabase.from('profiles').upsert({ id: userId, email, role: 'student', full_name: fullName });
 
+    // CREATE STUDENT RECORD
     const { error: updateError } = await supabase
       .from('students')
       .upsert({
@@ -203,24 +218,58 @@ exports.registerStudent = async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // 7. Log Activity
-    try {
-      await supabase.from('activity_logs').insert([{
+    // TRUSTED LOGGING: Capture IP and Device from Server Headers
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '0.0.0.0';
+    const device = req.headers['user-agent'] || 'Unknown Device';
+
+    await supabase.from('activity_logs').insert([{
         student_id: userId,
         student_name: fullName,
         student_id_text: studentIdText,
-        action: 'registered',
-        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
-        device_info: req.headers['user-agent'] || 'unknown'
-      }]);
-    } catch (logError) {
-      console.warn('Log failed (non-critical):', logError.message);
-    }
+        action: 'ACCOUNT_REGISTERED',
+        ip_address: ip,
+        device_info: device
+    }]);
 
     res.status(201).json({ message: 'Success', studentId: studentIdText });
 
   } catch (error) {
-    console.error("Registration Error:", error);
+    console.error("Critical Registration Error:", error);
+    if (userId && error.message.includes("Database")) {
+        await supabase.auth.admin.deleteUser(userId); // Automatic Rollback
+    }
     res.status(400).json({ error: error.message });
+  }
+};
+
+// --- 5. STAFF LOGIN ---
+exports.staffLogin = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return res.status(401).json({ error: 'Invalid Staff Credentials' });
+
+    const { data: staffData } = await supabase.from('staff').select('*').eq('id', data.user.id).single();
+    if (!staffData) return res.status(403).json({ error: 'Access Denied: This is not a Staff account.' });
+
+    res.json({ user: { ...staffData, role: 'staff' }, token: data.session.access_token });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+// --- 6. PARENT LOGIN ---
+exports.parentLogin = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return res.status(401).json({ error: 'Invalid Parent Credentials' });
+
+    const { data: parentData } = await supabase.from('parents').select('*').eq('id', data.user.id).single();
+    if (!parentData) return res.status(403).json({ error: 'Access Denied: This is not a Parent account.' });
+
+    res.json({ user: { ...parentData, role: 'parent' }, token: data.session.access_token });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };

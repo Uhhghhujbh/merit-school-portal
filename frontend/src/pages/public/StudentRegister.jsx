@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Upload, X, CheckCircle, User, Book, FileText, Eye, EyeOff, 
   ChevronRight, ChevronLeft, Loader2, Printer, AlertTriangle, 
-  ChevronDown, ChevronUp, Lock, Shield
+  ChevronDown, ChevronUp, Lock, Image as ImageIcon, File
 } from 'lucide-react';
-import { api } from '../../lib/api'; // Ensure API is imported
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { api } from '../../lib/api';
 
-// --- COMPONENTS MOVED OUTSIDE TO FIX KEYBOARD GLITCH ---
+// --- COMPONENTS ---
 
-const InputField = ({ label, value, onChange, type = "text", error, onBlur }) => (
+const InputField = ({ label, value, onChange, type = "text", error, onBlur, placeholder }) => (
   <div>
     <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>
     <input 
@@ -17,7 +19,8 @@ const InputField = ({ label, value, onChange, type = "text", error, onBlur }) =>
       className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none transition ${error ? 'border-red-500 focus:border-red-500' : 'border-slate-200 focus:border-blue-500'}`} 
       value={value} 
       onChange={e => onChange(e.target.value)} 
-      onBlur={onBlur} // Added onBlur for email check
+      onBlur={onBlur} 
+      placeholder={placeholder}
     />
     {error && <span className="text-red-500 text-xs font-bold mt-1 block">{error}</span>}
   </div>
@@ -44,110 +47,119 @@ const AccordionItem = ({ isOpen, title, icon: Icon, onToggle, children }) => {
 };
 
 const FormPreview = ({ formData }) => (
-  <div className="text-sm leading-relaxed" style={{ fontFamily: 'Georgia, serif' }}>
-    <div className="flex items-center gap-4 border-b-2 border-black pb-4 mb-6">
-      {/* RESTORED LOGO AND MCAS HEADER */}
-      <img src="/meritlogo.jpg" alt="MCAS Logo" className="w-20 h-20 object-contain"/>
+  <div className="text-sm leading-relaxed text-black" style={{ fontFamily: 'Times New Roman, serif' }}>
+    <div className="flex items-center gap-6 border-b-2 border-black pb-4 mb-6">
+      <img src="/meritlogo.jpg" alt="MCAS Logo" className="w-24 h-24 object-contain"/>
       <div className="text-center flex-1">
-        <h1 className="text-2xl font-bold text-blue-900 uppercase">Merit College of Advanced Studies</h1>
-        <p className="text-xs font-bold tracking-widest mt-1">KNOWLEDGE FOR ADVANCEMENT</p>
-        <p className="text-xs mt-2">32, Ansarul Ogidi, beside Conoil Filling Station, Ilorin.</p>
+        <h1 className="text-3xl font-black text-blue-900 uppercase tracking-wider">Merit College of Advanced Studies</h1>
+        <p className="text-xs font-bold tracking-[0.3em] mt-1 text-slate-600">KNOWLEDGE FOR ADVANCEMENT</p>
+        <p className="text-sm mt-2 font-medium">32, Ansarul Ogidi, beside Conoil Filling Station, Ilorin, Kwara State.</p>
+        <p className="text-sm">Tel: 08123456789, 08098765432 | Email: admissions@meritcollege.edu.ng</p>
       </div>
     </div>
 
-    <h2 className="text-center font-bold text-lg underline mb-6">STUDENT REGISTRATION FORM</h2>
+    <h2 className="text-center font-bold text-xl underline mb-8 uppercase">Student Registration Form (2025/2026)</h2>
 
-    <div className="mb-6 border border-slate-300 p-4 rounded">
-      <h3 className="font-bold text-base mb-4 bg-slate-100 p-2">A. PERSONAL DETAILS</h3>
-      <div className="flex gap-6">
-        <div className="w-32 h-32 bg-slate-200 border border-slate-400 flex-shrink-0">
+    <div className="mb-8 border border-slate-800 p-0">
+      <h3 className="font-bold text-sm bg-slate-200 p-2 border-b border-slate-800 uppercase">A. Personal Bio-Data</h3>
+      <div className="p-4 flex gap-6">
+        <div className="w-40 h-44 bg-slate-100 border border-slate-400 flex-shrink-0">
           {formData.photoPreview && <img src={formData.photoPreview} className="w-full h-full object-cover"/>}
         </div>
-        <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2">
-          <div className="col-span-2 border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">Full Name:</span> {formData.surname} {formData.middleName} {formData.lastName}
+        <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-4">
+          <div className="col-span-2 border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-32">Full Name:</span> 
+            <span className="uppercase">{formData.surname} {formData.middleName} {formData.lastName}</span>
           </div>
-          <div className="border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">Gender:</span> {formData.gender}
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-24">Gender:</span> {formData.gender}
           </div>
-          <div className="border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">DOB:</span> {formData.dateOfBirth}
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-24">DOB:</span> {formData.dateOfBirth}
           </div>
-          <div className="border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">State:</span> {formData.stateOfOrigin}
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-24">State:</span> {formData.stateOfOrigin}
           </div>
-          <div className="border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">LGA:</span> {formData.lga}
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-24">LGA:</span> {formData.lga}
           </div>
-          <div className="col-span-2 border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">Address:</span> {formData.permanentAddress}
+          <div className="col-span-2 border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-32">Address:</span> {formData.permanentAddress}
           </div>
-          <div className="border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">Phone:</span> {formData.studentPhone}
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-24">Phone:</span> {formData.studentPhone}
           </div>
-          <div className="border-b border-dotted border-slate-400 pb-1">
-            <span className="font-bold w-24 inline-block">Parent Ph:</span> {formData.parentsPhone}
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-24">Parent Ph:</span> {formData.parentsPhone}
+          </div>
+          <div className="col-span-2 border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-32">Email:</span> {formData.email}
           </div>
         </div>
       </div>
     </div>
 
-    <div className="mb-6 border border-slate-300 p-4 rounded">
-      <h3 className="font-bold text-base mb-4 bg-slate-100 p-2">B. ACADEMIC PROGRAM</h3>
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="border-b border-dotted border-slate-400 pb-1">
-          <span className="font-bold w-28 inline-block">Programme:</span> {formData.programme}
-        </div>
-        <div className="border-b border-dotted border-slate-400 pb-1">
-          <span className="font-bold w-28 inline-block">Department:</span> {formData.department}
-        </div>
-        {formData.programme === 'A-Level' && (
-          <>
-            <div className="border-b border-dotted border-slate-400 pb-1">
-              <span className="font-bold w-28 inline-block">University:</span> {formData.university}
-            </div>
-            <div className="border-b border-dotted border-slate-400 pb-1">
-              <span className="font-bold w-28 inline-block">Course:</span> {formData.course}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div>
-        <span className="font-bold block mb-2">Selected Subjects:</span>
-        <div className="grid grid-cols-3 gap-2">
-          {formData.subjects.map((sub, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs">
-              <div className="w-4 h-4 border border-black flex items-center justify-center font-bold">✓</div> {sub}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-
-    <div className="border border-slate-300 p-4 rounded">
-      <h3 className="font-bold text-base mb-4 bg-slate-100 p-2">C. DECLARATION</h3>
-      <p className="text-justify mb-8">
-        I, <strong>{formData.surname} {formData.middleName} {formData.lastName}</strong>, hereby declare that the information provided is true and correct. 
-        I agree to abide by all rules and regulations of Merit College of Advanced Studies.
-      </p>
-
-      <div className="flex justify-between items-end mt-12">
-        <div className="text-center">
-          <div className="text-2xl mb-1 text-blue-900 border-b border-black min-w-[200px] pb-1" style={{ fontFamily: 'Brush Script MT, cursive' }}>
-            {formData.signature}
+    <div className="mb-8 border border-slate-800 p-0">
+      <h3 className="font-bold text-sm bg-slate-200 p-2 border-b border-slate-800 uppercase">B. Academic Information</h3>
+      <div className="p-4">
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-32">Programme:</span> {formData.programme}
           </div>
-          <p className="text-xs font-bold">Applicant Signature</p>
+          <div className="border-b border-dotted border-slate-400 pb-1 flex">
+            <span className="font-bold w-32">Department:</span> {formData.department}
+          </div>
+          {formData.programme === 'A-Level' && (
+            <>
+              <div className="border-b border-dotted border-slate-400 pb-1 flex">
+                <span className="font-bold w-32">University:</span> {formData.university}
+              </div>
+              <div className="border-b border-dotted border-slate-400 pb-1 flex">
+                <span className="font-bold w-32">Course:</span> {formData.course}
+              </div>
+            </>
+          )}
         </div>
-        <div className="text-center">
-          <div className="border-b border-black min-w-[200px] mb-6"></div>
-          <p className="text-xs font-bold">Registrar / Official Stamp</p>
+
+        <div>
+          <span className="font-bold block mb-3 underline">Registered Subjects:</span>
+          <div className="grid grid-cols-3 gap-y-2 gap-x-4">
+            {formData.subjects.map((sub, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <div className="w-4 h-4 border border-black flex items-center justify-center font-bold text-[10px]">X</div> 
+                <span className="uppercase">{sub}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
 
-    <div className="text-center text-[10px] mt-8 text-slate-400">
-      Generated on {new Date().toLocaleString()} | Merit College Portal | Secure Registration System
+    <div className="border border-slate-800 p-0 mt-auto">
+      <h3 className="font-bold text-sm bg-slate-200 p-2 border-b border-slate-800 uppercase">C. Declaration & Attestation</h3>
+      <div className="p-4">
+        <p className="text-justify mb-10 leading-6">
+          I, <strong>{formData.surname} {formData.middleName} {formData.lastName}</strong>, hereby solemnly declare that all the information provided in this form is true, correct, and complete. 
+          I understand that any false information may lead to the cancellation of my admission. I agree to abide by all the rules, regulations, and code of conduct of Merit College of Advanced Studies.
+        </p>
+
+        <div className="flex justify-between items-end mt-12 px-8">
+          <div className="text-center">
+            <div className="text-3xl mb-2 text-blue-900 border-b-2 border-black min-w-[250px] pb-1" style={{ fontFamily: 'Brush Script MT, cursive' }}>
+              {formData.signature}
+            </div>
+            <p className="text-xs font-bold uppercase tracking-widest">Applicant Signature</p>
+          </div>
+          <div className="text-center">
+            <div className="border-b-2 border-black min-w-[250px] mb-8"></div>
+            <p className="text-xs font-bold uppercase tracking-widest">Registrar / Official Stamp</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="text-center text-[10px] mt-8 text-slate-500 border-t pt-2">
+      Printed on {new Date().toLocaleString()} • Merit College Portal • ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}
     </div>
   </div>
 );
@@ -162,7 +174,7 @@ const StudentRegister = () => {
   const [botField, setBotField] = useState('');
 
   const fileInputRef = useRef(null);
-  const printRef = useRef(null);
+  const printRef = useRef(null); // Reference for the A4 container
 
   const [formData, setFormData] = useState({
     surname: '', middleName: '', lastName: '',
@@ -175,8 +187,7 @@ const StudentRegister = () => {
     university: '', course: '', 
     photoPreview: null,
     signature: '',
-    termsAccepted: false,
-    location: null
+    termsAccepted: false
   });
 
   const [errors, setErrors] = useState({});
@@ -192,7 +203,6 @@ const StudentRegister = () => {
     if (/[^A-Za-z0-9]/.test(pass)) score += 1;
     return score; 
   };
-
   const passwordScore = checkStrength(formData.password);
 
   const getStrengthColor = (s) => {
@@ -208,18 +218,6 @@ const StudentRegister = () => {
   };
 
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setFormData(prev => ({ 
-          ...prev, 
-          location: { lat: pos.coords.latitude, lng: pos.coords.longitude } 
-        })),
-        (err) => console.log('Location access denied')
-      );
-    }
-  }, []);
-
-  useEffect(() => {
     if ((formData.programme === 'O-Level' || formData.programme === 'JAMB') && 
         formData.department && 
         !formData.subjects.includes('English Language')) {
@@ -231,19 +229,24 @@ const StudentRegister = () => {
   }, [formData.programme, formData.department]);
 
   const validatePhone = (phone) => /^0\d{10}$/.test(phone);
-  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  
+  // STRICT GMAIL VALIDATION
+  const validateEmail = (email) => /^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email);
 
-  // --- NEW: CHECK EMAIL EXISTENCE ---
   const handleEmailBlur = async () => {
-    if (!formData.email || !validateEmail(formData.email)) return;
+    if (!formData.email || !validateEmail(formData.email)) {
+        if(formData.email && !validateEmail(formData.email)) {
+            setErrors(prev => ({ ...prev, email: "Only @gmail.com addresses are allowed." }));
+        }
+        return;
+    }
     
     try {
-      // Assuming you have this endpoint now
       const res = await api.post('/auth/check-email', { email: formData.email });
       if (res.exists) {
          setErrors(prev => ({ ...prev, email: "This email is already registered." }));
       } else {
-         setErrors(prev => ({ ...prev, email: null })); // Clear error if available
+         setErrors(prev => ({ ...prev, email: null })); 
       }
     } catch (err) {
       console.error("Email check failed:", err);
@@ -256,8 +259,8 @@ const StudentRegister = () => {
     if (!formData.lastName) newErrors.lastName = "First Name is required";
 
     if (!formData.email) newErrors.email = "Email is required";
-    else if (!validateEmail(formData.email)) newErrors.email = "Invalid Email Format";
-    else if (errors.email) newErrors.email = errors.email; // Keep existing error from API check
+    else if (!validateEmail(formData.email)) newErrors.email = "Only valid @gmail.com addresses allowed";
+    else if (errors.email) newErrors.email = errors.email; 
 
     if (!formData.studentPhone) newErrors.studentPhone = "Student Phone is required";
     else if (!validatePhone(formData.studentPhone)) newErrors.studentPhone = "Invalid Phone (Must be 11 digits)";
@@ -290,7 +293,7 @@ const StudentRegister = () => {
     const newErrors = {};
     if (!formData.programme) newErrors.programme = "Select a programme";
     if (!formData.department) newErrors.department = "Select a department";
-    if (formData.subjects.length === 0) newErrors.subjects = "Select at least one subject";
+    if (formData.subjects.length === 0) newErrors.subjects = "Select subjects";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -311,21 +314,22 @@ const StudentRegister = () => {
     reader.readAsDataURL(file);
   };
 
+  // --- EXPANDED SUBJECTS LIST ---
   const getSubjectsByDepartment = () => {
     const isALevel = formData.programme === 'A-Level';
 
     const subjects = {
       Science: isALevel 
-        ? ["Mathematics", "Further Mathematics", "Physics", "Chemistry", "Biology", "Agricultural Science", "Computer Science / ICT", "Statistics"]
-        : ["Mathematics", "English Language", "Physics", "Chemistry", "Biology", "Agricultural Science", "Further Mathematics", "Computer Studies / ICT", "Geography", "Civic Education", "Religious Studies"],
+        ? ["Mathematics", "Further Mathematics", "Physics", "Chemistry", "Biology", "Agricultural Science", "Computer Science", "Geography", "Statistics", "Economics"]
+        : ["Mathematics", "English Language", "Physics", "Chemistry", "Biology", "Agricultural Science", "Further Mathematics", "Computer Studies", "Geography", "Civic Education", "Economics", "Marketing", "Data Processing", "Technical Drawing", "Animal Husbandry", "Fisheries", "Dyeing & Bleaching", "Catering Craft"],
 
       Art: isALevel
-        ? ["Government", "History", "Geography", "Literature in English", "Religious Studies (CRS / IRS)", "Philosophy", "Sociology", "Languages (Yoruba, Hausa, Igbo, French)"]
-        : ["English Language", "Government", "History", "Geography", "Literature in English", "Civic Education", "Social Studies", "Religious Studies", "Yoruba", "Fine Arts / Visual Arts", "Music", "Home Economics"],
+        ? ["Government", "History", "Literature in English", "Religious Studies (CRS/IRS)", "Yoruba", "Hausa", "Igbo", "French", "Economics", "Sociology", "Philosophy"]
+        : ["English Language", "Mathematics", "Literature in English", "Government", "History", "Civic Education", "CRS", "IRS", "Yoruba", "Hausa", "Igbo", "French", "Fine Arts", "Music", "Economics", "Commerce", "Marketing", "Computer Studies", "Theatre Arts"],
 
       Commercial: isALevel
-        ? ["Economics", "Business Studies", "Accounting", "Commerce", "Marketing", "Entrepreneurship", "Banking and Finance"]
-        : ["English Language", "Mathematics", "Economics", "Commerce", "Financial Accounting", "Business Studies", "Office Practice", "Marketing", "Civic Education", "Computer Studies", "Religious Studies", "Yoruba"]
+        ? ["Economics", "Accounting", "Business Management", "Government", "Mathematics", "Sociology", "Geography"]
+        : ["English Language", "Mathematics", "Economics", "Commerce", "Financial Accounting", "Book Keeping", "Office Practice", "Marketing", "Business Studies", "Civic Education", "Computer Studies", "Government", "Insurance", "Store Management"]
     };
 
     return subjects[formData.department] || [];
@@ -352,15 +356,7 @@ const StudentRegister = () => {
   };
 
   const handleSubmit = async () => {
-    if (botField !== '') {
-      console.log("🤖 Bot detected. Silent fail activated.");
-      setLoading(true);
-      setTimeout(() => {
-        setLoading(false);
-        alert("An error occurred. Please try again later.");
-      }, 2000);
-      return;
-    }
+    if (botField !== '') return;
 
     if (!formData.termsAccepted) return alert("Please accept terms and conditions");
     if (!formData.signature) return alert("Please provide your digital signature");
@@ -376,14 +372,10 @@ const StudentRegister = () => {
     setLoading(true);
 
     try {
-      // Using Real Backend API Call now
       const response = await api.post('/students/register', { 
         ...formData, 
         role: 'student' 
       });
-      
-      // The backend will generate the ID: MCAS/DEPT/YEAR/4RAND
-      // We show what the backend returned
       alert(`Success! Your Student ID: ${response.studentId}`);
       navigate('/auth/student');
     } catch (error) {
@@ -393,40 +385,47 @@ const StudentRegister = () => {
     }
   };
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (printRef.current) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>${formData.surname}_Registration_Form</title>
-            <style>
-              body { font-family: serif; padding: 20mm; }
-              @media print { @page { size: A4; margin: 10mm; } }
-              .logo { width: 80px; height: 80px; }
-            </style>
-          </head>
-          <body>${printRef.current.innerHTML}</body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
+  // --- NEW: HIGH QUALITY PRINT/DOWNLOAD LOGIC ---
+  const downloadAsJPG = async () => {
+    if (!printRef.current) return;
+    try {
+        const canvas = await html2canvas(printRef.current, { scale: 3, useCORS: true });
+        const image = canvas.toDataURL("image/jpeg", 1.0);
+        const link = document.createElement("a");
+        link.href = image;
+        link.download = `${formData.surname}_Registration_Form.jpg`;
+        link.click();
+    } catch (err) {
+        alert("Error generating image. Please try again.");
+    }
+  };
+
+  const downloadAsPDF = async () => {
+    if (!printRef.current) return;
+    try {
+        const canvas = await html2canvas(printRef.current, { scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`${formData.surname}_Registration_Form.pdf`);
+    } catch (err) {
+        alert("Error generating PDF. Please try again.");
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 py-10 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 py-10 px-4 font-sans">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
 
-        {/* RESTORED HEADER LOGO & TEXT */}
         <div className="bg-blue-900 px-8 py-8 text-white text-center">
-           {/* LOGO ADDED BACK */}
            <img src="/meritlogo.jpg" alt="MCAS" className="w-20 h-20 rounded-full bg-white p-1 shadow-lg mx-auto mb-4 object-contain" />
            <h1 className="text-3xl font-black tracking-tight">STUDENT REGISTRATION</h1>
            <p className="text-blue-200 text-sm font-medium mt-1">Merit College of Advanced Studies • 2025/2026</p>
         </div>
 
-        {/* ACCORDION FORM */}
         <div className="border-t border-slate-200">
 
           {/* 1. PERSONAL INFORMATION */}
@@ -467,13 +466,13 @@ const StudentRegister = () => {
                 </div>
 
                 <InputField label="Date of Birth" type="date" value={formData.dateOfBirth} onChange={v => setFormData({...formData, dateOfBirth: v})} error={errors.dateOfBirth} />
-                {/* EMAIL FIELD WITH ONBLUR VALIDATION */}
                 <InputField 
                     label="Email Address" 
                     type="email" 
+                    placeholder="student@gmail.com"
                     value={formData.email} 
                     onChange={v => setFormData({...formData, email: v})} 
-                    onBlur={handleEmailBlur} // TRIGGERS SUPABASE CHECK
+                    onBlur={handleEmailBlur} 
                     error={errors.email} 
                 />
 
@@ -546,11 +545,9 @@ const StudentRegister = () => {
                 type="text" 
                 name="website_url_check" 
                 tabIndex="-1"
-                style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px' }} 
+                style={{ position: 'absolute', left: '-9999px' }} 
                 value={botField} 
                 onChange={(e) => setBotField(e.target.value)} 
-                autoComplete="off"
-                aria-hidden="true"
               />
 
               <button 
@@ -658,7 +655,7 @@ const StudentRegister = () => {
                   <AlertTriangle className="text-yellow-600 shrink-0 mt-1" size={20}/>
                   <div className="text-sm text-yellow-900">
                     <p className="font-bold mb-1">Important Notice</p>
-                    <p>You MUST download or print your form before submitting. It is required for physical verification at the college.</p>
+                    <p>You MUST download or print your form before submitting. Use the preview button below.</p>
                   </div>
                 </div>
               </div>
@@ -689,11 +686,10 @@ const StudentRegister = () => {
                   value={formData.signature} 
                   onChange={e => setFormData({...formData, signature: e.target.value})} 
                 />
-                <p className="text-xs text-slate-500 mt-1">This will serve as your digital signature</p>
               </div>
 
               <button onClick={() => setShowPreview(true)} className="w-full py-4 border-2 border-slate-800 text-slate-800 rounded-xl font-bold flex justify-center items-center gap-2 hover:bg-slate-800 hover:text-white transition">
-                <Eye size={20}/> Preview Form Before Submit
+                <Eye size={20}/> Preview Form & Download
               </button>
 
               <button 
@@ -701,15 +697,8 @@ const StudentRegister = () => {
                 disabled={loading || !formData.termsAccepted} 
                 className="w-full bg-green-600 text-white py-5 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition disabled:bg-slate-300 disabled:cursor-not-allowed flex justify-center items-center gap-3"
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="animate-spin"/> Processing...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle size={22}/> Submit Application
-                  </>
-                )}
+                {loading ? <Loader2 className="animate-spin"/> : <CheckCircle size={22}/>}
+                Submit Application
               </button>
             </div>
           </AccordionItem>
@@ -717,28 +706,32 @@ const StudentRegister = () => {
         </div>
       </div>
 
-      {/* PREVIEW MODAL */}
+      {/* FIXED PREVIEW MODAL */}
       {showPreview && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl my-8 overflow-hidden">
-            <div className="bg-slate-700 p-4 flex justify-between items-center sticky top-0 z-10">
-              <h3 className="font-bold text-white flex items-center gap-2">
-                <FileText size={18}/> Form Preview
-              </h3>
-              <div className="flex gap-2">
-                <button onClick={handlePrint} className="bg-white text-slate-800 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-100 transition flex items-center gap-2">
-                  <Printer size={14}/> Print
+        <div className="fixed inset-0 bg-black/95 flex items-start justify-center z-50 overflow-y-auto py-10">
+          <div className="w-full max-w-[230mm] flex flex-col items-center">
+            
+            <div className="sticky top-0 bg-slate-800 text-white p-4 rounded-xl flex gap-4 mb-8 shadow-xl z-50">
+                <button onClick={downloadAsPDF} className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition">
+                    <File size={18}/> Download PDF
                 </button>
-                <button onClick={() => setShowPreview(false)} className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition">
-                  <X size={18}/>
+                <button onClick={downloadAsJPG} className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition">
+                    <ImageIcon size={18}/> Download JPG
                 </button>
-              </div>
+                <button onClick={() => setShowPreview(false)} className="bg-white text-black px-6 py-2 rounded-lg font-bold hover:bg-slate-200 transition">
+                    Close
+                </button>
             </div>
-            <div className="p-8 bg-slate-100 overflow-auto">
-              <div ref={printRef} className="bg-white shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm' }}>
+
+            {/* A4 CONTAINER FIXED */}
+            <div 
+                ref={printRef} 
+                className="bg-white shadow-2xl relative" 
+                style={{ width: '210mm', minHeight: '297mm', padding: '15mm' }}
+            >
                 <FormPreview formData={formData} />
-              </div>
             </div>
+
           </div>
         </div>
       )}

@@ -61,8 +61,8 @@ const MathExtension = Node.create({
 });
 
 // --- CLOUDINARY CONFIG ---
-const CLOUD_NAME = "YOUR_CLOUD_NAME"; // REPLACE THIS
-const UPLOAD_PRESET = "YOUR_PRESET_NAME"; // REPLACE THIS
+const CLOUD_NAME = "dflhuyyoa"; // REPLACE THIS
+const UPLOAD_PRESET = "merit-school-portal"; // REPLACE THIS
 
 const RichTextEditor = ({ content, onChange, editable = true, onSend }) => {
   const editor = useEditor({

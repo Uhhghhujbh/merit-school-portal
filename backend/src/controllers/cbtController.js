@@ -163,6 +163,14 @@ exports.generateQuestions = async (req, res) => {
   const { subjects, totalTime, use_ai } = req.body;
 
   try {
+    // Validate subjects is an array
+    if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid subjects format. Please select at least one subject.',
+        details: 'subjects must be an array of {name, count} objects'
+      });
+    }
+
     // Check subscription
     const { data: student } = await supabase
       .from('students')

@@ -88,11 +88,11 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// General API: 100 requests per 15 minutes (down from 3000)
+// General API: 500 requests per 15 minutes (more reasonable)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests from this IP. Please slow down.',
+  max: 500,
+  message: 'Too many requests. Please slow down and try again later.',
   standardHeaders: true,
   legacyHeaders: false,
 });

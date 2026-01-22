@@ -61,8 +61,7 @@ exports.sendMessage = async (req, res) => {
             sender_name: senderName,
             sender_role: req.role || 'student',
             message: message?.trim() || '',
-            image_url: imageUrl,
-            image_thumbnail: imageThumbnail
+            image_url: imageUrl
         }]);
 
         if (error) throw error;

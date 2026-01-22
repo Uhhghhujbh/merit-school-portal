@@ -276,7 +276,7 @@ const LandingPage = () => {
               &copy; {currentYear} Merit College of Advanced Studies. All Rights Reserved.
             </p>
             <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-              Powered by <span className="text-slate-900 font-bold">LearnovaTech</span>
+              A Demonstration by <span className="text-slate-900 font-bold">LearnovaTech</span>
             </div>
           </div>
         </div>

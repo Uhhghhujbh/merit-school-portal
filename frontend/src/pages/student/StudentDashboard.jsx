@@ -267,6 +267,11 @@ const StudentDashboard = () => {
                      onClick={() => !isFeatureLocked && setActiveTab('library')}
                      locked={isFeatureLocked}
                   />
+                  <SidebarItem
+                     icon={<FileText size={20} />}
+                     label="E-Notes"
+                     onClick={() => navigate('/student/enotes')}
+                  />
                </div>
 
                <div className="pt-2">

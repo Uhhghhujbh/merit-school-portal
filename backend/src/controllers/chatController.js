@@ -121,3 +121,97 @@ exports.createQuizFromChat = async (req, res) => {
     }
 };
 
+/**
+ * Edit a message (only own messages within 15 minutes)
+ */
+exports.editMessage = async (req, res) => {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!message || message.trim() === '') {
+        return res.status(400).json({ error: 'Message cannot be empty' });
+    }
+
+    try {
+        // Get the message first
+        const { data: existingMsg, error: fetchError } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !existingMsg) {
+            return res.status(404).json({ error: 'Message not found' });
+        }
+
+        // Check ownership
+        if (existingMsg.sender_id !== req.user.id) {
+            return res.status(403).json({ error: 'You can only edit your own messages' });
+        }
+
+        // Check time limit (15 minutes)
+        const msgTime = new Date(existingMsg.created_at);
+        const now = new Date();
+        const diffMinutes = (now - msgTime) / (1000 * 60);
+
+        if (diffMinutes > 15) {
+            return res.status(403).json({ error: 'Messages can only be edited within 15 minutes' });
+        }
+
+        // Update message
+        const { error: updateError } = await supabase
+            .from('chat_messages')
+            .update({
+                message: message.trim(),
+                is_edited: true,
+                edited_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * Delete a message (only own messages)
+ */
+exports.deleteMessage = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        // Get the message first
+        const { data: existingMsg, error: fetchError } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !existingMsg) {
+            return res.status(404).json({ error: 'Message not found' });
+        }
+
+        // Check ownership (admins can delete any message)
+        if (existingMsg.sender_id !== req.user.id && req.role !== 'admin') {
+            return res.status(403).json({ error: 'You can only delete your own messages' });
+        }
+
+        // Soft delete - replace content
+        const { error: updateError } = await supabase
+            .from('chat_messages')
+            .update({
+                message: 'This message was deleted',
+                is_deleted: true,
+                image_url: null
+            })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+

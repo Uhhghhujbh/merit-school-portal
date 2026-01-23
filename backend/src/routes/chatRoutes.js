@@ -9,6 +9,8 @@ router.use(verifyAny);
 // Chat messages
 router.get('/', chatController.getMessages);
 router.post('/', chatController.sendMessage);
+router.put('/:id', chatController.editMessage);
+router.delete('/:id', chatController.deleteMessage);
 
 // Create quiz from chat
 router.post('/create-quiz', chatController.createQuizFromChat);

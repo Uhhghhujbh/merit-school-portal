@@ -174,6 +174,7 @@ app.use('/api/subscriptions', require('./routes/subscriptionRoutes'));
 app.use('/api/quiz', require('./routes/quizRoutes')); // Quiz accessible to all roles
 app.use('/api/students/cbt', require('./routes/cbtRoutes')); // New CBT routes (Generate, Dictionary etc)
 app.use('/api/payments', require('./routes/paymentRoutes')); // Flutterwave payments
+app.use('/api/enotes', require('./routes/enotesRoutes')); // E-Notes (digital study materials)
 
 // --- SECURITY MONITORING API (Admin Only) ---
 const { verifyAdmin } = require('./middleware/authMiddleware');

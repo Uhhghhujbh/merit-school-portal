@@ -34,19 +34,20 @@ const LandingPage = () => {
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans selection:bg-blue-100">
 
-      {/* --- NAVIGATION (Glassmorphism) --- */}
+
+      {/* --- NAVIGATION (Responsive) --- */}
       <nav className="fixed w-full z-50 transition-all duration-300 bg-white/90 backdrop-blur-lg border-b border-slate-200/60 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
+          <div className="flex justify-between items-center h-16 md:h-20">
             {/* Logo */}
-            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+            <div className="flex items-center gap-2 md:gap-3 cursor-pointer group" onClick={() => navigate('/')}>
               <div className="relative">
                 <div className="absolute inset-0 bg-blue-600 rounded-full blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
-                <img src="/meritlogo.jpg" alt="Merit Logo" className="relative w-12 h-12 object-contain rounded-full border-2 border-white shadow-md" />
+                <img src="/meritlogo.jpg" alt="Merit Logo" className="relative w-10 h-10 md:w-12 md:h-12 object-contain rounded-full border-2 border-white shadow-md" />
               </div>
-              <div className="hidden md:block">
-                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight leading-none">MERIT COLLEGE</h1>
-                <p className="text-[10px] text-blue-700 font-bold uppercase tracking-[0.25em] mt-0.5">Of Advanced Studies</p>
+              <div>
+                <h1 className="text-base md:text-xl font-extrabold text-slate-900 tracking-tight leading-none">MERIT COLLEGE</h1>
+                <p className="text-[8px] md:text-[10px] text-blue-700 font-bold uppercase tracking-[0.15em] md:tracking-[0.25em] mt-0.5">Of Advanced Studies</p>
               </div>
             </div>
 
@@ -63,6 +64,22 @@ const LandingPage = () => {
                 className="bg-slate-900 hover:bg-blue-900 text-white px-7 py-3 rounded-full font-bold shadow-lg shadow-blue-900/20 hover:shadow-xl hover:shadow-blue-900/30 transition-all flex items-center gap-2 transform hover:-translate-y-0.5"
               >
                 Apply Now <ChevronRight size={16} />
+              </button>
+            </div>
+
+            {/* Mobile Actions */}
+            <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={() => navigate('/auth')}
+                className="text-slate-700 px-3 py-2 text-xs font-bold uppercase"
+              >
+                Login
+              </button>
+              <button
+                onClick={() => navigate('/register/student')}
+                className="bg-blue-800 text-white px-4 py-2 rounded-full text-xs font-bold"
+              >
+                Apply
               </button>
             </div>
           </div>

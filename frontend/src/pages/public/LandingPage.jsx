@@ -252,6 +252,12 @@ const LandingPage = () => {
                   <Phone size={20} className="text-blue-600 shrink-0" />
                   <span className="text-sm">+234 816 698 5866</span>
                 </li>
+                <li className="flex items-center gap-3">
+                  <Users size={20} className="text-blue-600 shrink-0" />
+                  <a href="https://www.facebook.com/meritcollegeofadvancestudies/" target="_blank" rel="noopener noreferrer" className="text-sm hover:underline hover:text-blue-800">
+                    Merit College Facebook
+                  </a>
+                </li>
               </ul>
 
               {/* GOOGLE MAP EMBED - Below Address */}
@@ -268,7 +274,7 @@ const LandingPage = () => {
                 ></iframe>
               </div>
               <a
-                href="https://maps.app.goo.gl/7RVapbRn8KhCG8bk9"
+                href="https://share.google/lbZJwOMIXtwHo2YAv"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block mt-2 text-sm text-blue-600 hover:underline font-medium"
@@ -276,21 +282,11 @@ const LandingPage = () => {
                 Open in Google Maps →
               </a>
             </div>
-
-            <div>
-              <h4 className="font-bold text-slate-900 uppercase tracking-wider mb-6">Portals</h4>
-              <ul className="space-y-3 text-sm text-slate-600">
-                <li><button onClick={() => navigate('/auth/student')} className="hover:text-blue-600 transition">Student Login</button></li>
-                <li><button onClick={() => navigate('/auth/staff')} className="hover:text-blue-600 transition">Staff Login</button></li>
-                <li><button onClick={() => navigate('/auth/parent')} className="hover:text-blue-600 transition">Parent Login</button></li>
-                <li><button onClick={() => navigate('/auth/admin')} className="hover:text-blue-600 transition">Administration</button></li>
-              </ul>
-            </div>
           </div>
 
           <div className="border-t border-slate-100 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-slate-400 text-xs">
-              &copy; {currentYear} Merit College of Advanced Studies. All Rights Reserved.
+              &copy; {currentYear} Merit College of Advanced Studies. Est. 2019. All Rights Reserved.
             </p>
             <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium uppercase tracking-widest">
               A Demonstration by <span className="text-slate-900 font-bold">LearnovaTech</span>

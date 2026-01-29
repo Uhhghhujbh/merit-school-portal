@@ -82,121 +82,197 @@ exports.addENote = async (req, res) => {
                 file_size: file_size || 0,
                 thumbnail_url: thumbnail_url || null,
                 downloads: 0,
-                is_active: true,
-                uploaded_by: req.user?.id || null,
-                created_at: new Date().toISOString()
-            }])
-            .select()
-            .single();
+                const isActive = req.role === 'admin'; // Auto-approve if Admin
 
-        if (error) throw error;
-        res.json({ success: true, note: data });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
+                const { data, error } = await supabase
+                    .from('e_notes')
+                    .insert([{
+                        title,
+                        subject,
+                        class_level: class_level || 'All',
+                        description: description || '',
+                        file_url,
+                        file_type: file_type || 'pdf',
+                        file_size: file_size || 0,
+                        thumbnail_url: thumbnail_url || null,
+                        downloads: 0,
+                        is_active: isActive,
+                        uploaded_by: req.user?.id || null,
+                        created_at: new Date().toISOString()
+                    }])
+                    .select()
+                    .single();
 
-/**
- * Update E-Note (Admin only)
- */
-exports.updateENote = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title, subject, class_level, description, file_url, is_active } = req.body;
+                if(error) throw error;
+                res.json({
+                    success: true,
+                    note: data,
+                    message: isActive ? 'E-Note Added Successfully' : 'E-Note Submitted for Approval'
+                });
+            } catch (err) {
+                res.status(500).json({ error: err.message });
+            }
+    };
 
-        const { data, error } = await supabase
-            .from('e_notes')
-            .update({
-                title,
-                subject,
-                class_level,
-                description,
-                file_url,
-                is_active,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', id)
-            .select()
-            .single();
+    /**
+     * Approve E-Note (Admin only)
+     */
+    exports.approveENote = async (req, res) => {
+        try {
+            const { id } = req.params;
 
-        if (error) throw error;
-        res.json({ success: true, note: data });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-/**
- * Delete E-Note (Admin only)
- */
-exports.deleteENote = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const { error } = await supabase
-            .from('e_notes')
-            .delete()
-            .eq('id', id);
-
-        if (error) throw error;
-        res.json({ success: true, message: 'E-Note deleted' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-/**
- * Track download (increment counter)
- */
-exports.trackDownload = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        // Get current downloads
-        const { data: note } = await supabase
-            .from('e_notes')
-            .select('downloads')
-            .eq('id', id)
-            .single();
-
-        if (note) {
-            await supabase
+            const { data, error } = await supabase
                 .from('e_notes')
-                .update({ downloads: (note.downloads || 0) + 1 })
-                .eq('id', id);
+                .update({ is_active: true })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            res.json({ success: true, note: data });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
         }
+    };
 
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
+    /**
+     * Get Pending E-Notes (Admin only)
+     */
+    exports.getPendingENotes = async (req, res) => {
+        try {
+            const { data, error } = await supabase
+                .from('e_notes')
+                .select('*')
+                .eq('is_active', false)
+                .order('created_at', { ascending: false });
 
-/**
- * Get subjects with note counts
- */
-exports.getSubjects = async (req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('e_notes')
-            .select('subject')
-            .eq('is_active', true);
+            if (error) throw error;
+            res.json(data || []);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    };
 
-        if (error) throw error;
+    /**
+     * Get My Uploads (Staff)
+     */
+    exports.getMyENotes = async (req, res) => {
+        try {
+            const userId = req.user?.id;
+            const { data, error } = await supabase
+                .from('e_notes')
+                .select('*')
+                .eq('uploaded_by', userId)
+                .order('created_at', { ascending: false });
 
-        // Count notes per subject
-        const subjectCounts = {};
-        (data || []).forEach(note => {
-            subjectCounts[note.subject] = (subjectCounts[note.subject] || 0) + 1;
-        });
+            if (error) throw error;
+            res.json(data || []);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    };
 
-        const subjects = Object.entries(subjectCounts).map(([name, count]) => ({
-            name,
-            count
-        }));
+    /**
+     * Update E-Note (Admin only)
+     */
+    exports.updateENote = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { title, subject, class_level, description, file_url, is_active } = req.body;
 
-        res.json(subjects);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
+            const { data, error } = await supabase
+                .from('e_notes')
+                .update({
+                    title,
+                    subject,
+                    class_level,
+                    description,
+                    file_url,
+                    is_active,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            res.json({ success: true, note: data });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    };
+
+    /**
+     * Delete E-Note (Admin only)
+     */
+    exports.deleteENote = async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            const { error } = await supabase
+                .from('e_notes')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            res.json({ success: true, message: 'E-Note deleted' });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    };
+
+    /**
+     * Track download (increment counter)
+     */
+    exports.trackDownload = async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            // Get current downloads
+            const { data: note } = await supabase
+                .from('e_notes')
+                .select('downloads')
+                .eq('id', id)
+                .single();
+
+            if (note) {
+                await supabase
+                    .from('e_notes')
+                    .update({ downloads: (note.downloads || 0) + 1 })
+                    .eq('id', id);
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    };
+
+    /**
+     * Get subjects with note counts
+     */
+    exports.getSubjects = async (req, res) => {
+        try {
+            const { data, error } = await supabase
+                .from('e_notes')
+                .select('subject')
+                .eq('is_active', true);
+
+            if (error) throw error;
+
+            // Count notes per subject
+            const subjectCounts = {};
+            (data || []).forEach(note => {
+                subjectCounts[note.subject] = (subjectCounts[note.subject] || 0) + 1;
+            });
+
+            const subjects = Object.entries(subjectCounts).map(([name, count]) => ({
+                name,
+                count
+            }));
+
+            res.json(subjects);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    };

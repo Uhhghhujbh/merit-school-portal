@@ -25,6 +25,7 @@ import StudentCbt from './pages/student/StudentCbt';
 import StudentQuiz from './pages/student/StudentQuiz';
 import StudentChat from './pages/student/StudentChat';
 import StudentENotes from './pages/student/StudentENotes';
+import StudentPayment from './pages/student/StudentPayment';
 
 // --- CBT PAGES ---
 import CbtSetup from './pages/student/cbt/CbtSetup';
@@ -118,6 +119,7 @@ const App = () => {
         <Route path="/student/quiz" element={<ProtectedRoute allowedRole="student"><StudentQuiz /></ProtectedRoute>} />
         <Route path="/student/chat" element={<ProtectedRoute allowedRole="student"><StudentChat /></ProtectedRoute>} />
         <Route path="/student/enotes" element={<ProtectedRoute allowedRole="student"><StudentENotes /></ProtectedRoute>} />
+        <Route path="/student/payment" element={<ProtectedRoute allowedRole="student"><StudentPayment /></ProtectedRoute>} />
 
         <Route
           path="/staff/dashboard"

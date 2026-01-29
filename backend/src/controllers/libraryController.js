@@ -34,7 +34,7 @@ exports.deleteBook = async (req, res) => {
 // --- PUBLIC: GET BOOKS (With Access Logic) ---
 exports.getLibrary = async (req, res) => {
   const { userId, role, department } = req.query; // Passed from frontend
-  
+
   try {
     // 1. Get all books
     const { data: books, error } = await supabase.from('library_books').select('*').order('created_at', { ascending: false });
@@ -48,10 +48,10 @@ exports.getLibrary = async (req, res) => {
     const accessibleBooks = books.filter(book => {
       // Role Check
       if (book.target_audience !== 'all' && book.target_audience !== role) return false;
-      
+
       // Department Check (Only applied if book has a restriction)
       if (book.restricted_dept && book.restricted_dept !== department) return false;
-      
+
       return true;
     }).map(book => ({
       ...book,
@@ -68,28 +68,28 @@ exports.getLibrary = async (req, res) => {
 // --- PAYMENT: VERIFY PURCHASE ---
 exports.verifyBookPurchase = async (req, res) => {
   const { transaction_id, book_id, user_id } = req.body;
-  
+
   try {
     // Verify with Flutterwave
     const response = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`
-        }
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.FLW_SECRET_KEY || process.env.FLUTTERWAVE_SECRET_KEY}`
+      }
     });
     const flwData = await response.json();
 
     if (flwData.status === 'success') {
-       // Record Purchase
-       await supabase.from('library_purchases').insert([{
-         user_id, book_id, 
-         amount: flwData.data.amount,
-         reference: flwData.data.tx_ref
-       }]);
-       res.json({ message: 'Book Purchased Successfully' });
+      // Record Purchase
+      await supabase.from('library_purchases').insert([{
+        user_id, book_id,
+        amount: flwData.data.amount,
+        reference: flwData.data.tx_ref
+      }]);
+      res.json({ message: 'Book Purchased Successfully' });
     } else {
-       res.status(400).json({ error: 'Payment Failed' });
+      res.status(400).json({ error: 'Payment Failed' });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });

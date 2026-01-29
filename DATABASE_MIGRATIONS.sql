@@ -86,7 +86,9 @@ CREATE TABLE IF NOT EXISTS payments (
 -- E-Notes RLS
 ALTER TABLE e_notes ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Anyone can read active e_notes" ON e_notes
+-- Drop existing policy if it exists, then create
+DROP POLICY IF EXISTS "Anyone can read active e_notes" ON e_notes;
+CREATE POLICY "Anyone can read active e_notes" ON e_notes
     FOR SELECT USING (is_active = true);
 
 -- Note: Backend uses service_role key so it bypasses RLS for admin operations

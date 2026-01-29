@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import AdmissionLetter from '../../components/shared/AdmissionLetter';
 import LibraryView from '../../components/shared/LibraryView';
+import AdminENotesView from './AdminENotesView';
 import FormPreview from '../../components/FormPreview';
 import AdminPriceControls from '../../components/admin/AdminPriceControls';
 import AdminCbtPanel from '../../components/admin/AdminCbtPanel';
@@ -385,6 +386,7 @@ const AdminDashboard = () => {
           <TabBtn icon={<Users />} label="Students" active={activeTab === 'students'} expanded={sidebarOpen} onClick={() => setActiveTab('students')} />
           <TabBtn icon={<FileCheck />} label="Results Mgt" active={activeTab === 'results'} expanded={sidebarOpen} onClick={() => setActiveTab('results')} />
           <TabBtn icon={<Activity />} label="Activity Log" active={activeTab === 'logs'} expanded={sidebarOpen} onClick={() => setActiveTab('logs')} />
+          <TabBtn icon={<FileText />} label="E-Notes Approval" active={activeTab === 'enotes'} expanded={sidebarOpen} onClick={() => setActiveTab('enotes')} />
           <TabBtn icon={<Book />} label="Library" active={activeTab === 'library'} expanded={sidebarOpen} onClick={() => setActiveTab('library')} />
           <TabBtn icon={<Bell />} label="Broadcasts" active={activeTab === 'broadcast'} expanded={sidebarOpen} onClick={() => setActiveTab('broadcast')} />
           <TabBtn icon={<Shield />} label="Staff" active={activeTab === 'staff'} expanded={sidebarOpen} onClick={() => setActiveTab('staff')} />
@@ -665,54 +667,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* TRANSACTIONS TAB */}
-        {activeTab === 'transactions' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fadeIn">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="font-bold text-lg text-slate-800">Transaction Logs</h3>
-            </div>
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                <tr>
-                  <th className="p-5">Date</th>
-                  <th className="p-5">Student</th>
-                  <th className="p-5">Ref / Info</th>
-                  <th className="p-5">Status</th>
-                  <th className="p-5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {transactionLogs.length === 0 ? <tr><td colSpan="5" className="p-8 text-center text-slate-500">No transactions recorded.</td></tr> :
-                  transactionLogs.map(tx => (
-                    <tr key={tx.id} className="hover:bg-slate-50">
-                      <td className="p-5 text-slate-600">{new Date(tx.created_at).toLocaleDateString()}</td>
-                      <td className="p-5 font-bold">{tx.students ? `${tx.students.surname} ${tx.students.first_name}` : 'Unknown'}</td>
-                      <td className="p-5 font-mono text-xs">{tx.transaction_ref || tx.reference}</td>
-                      <td className="p-5">
-                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${tx.status === 'approved' ? 'bg-green-100 text-green-700' : tx.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {tx.status}
-                        </span>
-                      </td>
-                      <td className="p-5 text-right">
-                        {tx.status === 'pending' && (
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={async () => {
-                                if (!confirm('Approve this transaction? Student payment will be marked PAID.')) return;
-                                await api.post('/schmngt/transactions/update', { id: tx.id, status: 'approved' }, token);
-                                setTransactionLogs(prev => prev.map(t => t.id === tx.id ? { ...t, status: 'approved' } : t));
-                              }}
-                              className="bg-green-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-green-700"
-                            >Approve</button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+
 
         {/* CBT MANAGEMENT TAB */}
         {activeTab === 'cbt' && (
@@ -841,6 +796,13 @@ const AdminDashboard = () => {
         {activeTab === 'library' && (
           <div className="animate-fadeIn">
             <LibraryView user={{ id: 'admin', email: user?.email, full_name: 'Administrator' }} role="admin" isAdmin={true} token={token} />
+          </div>
+        )}
+
+        {/* E-NOTES APPROVAL TAB */}
+        {activeTab === 'enotes' && (
+          <div className="animate-fadeIn">
+            <AdminENotesView user={user} token={token} />
           </div>
         )}
 

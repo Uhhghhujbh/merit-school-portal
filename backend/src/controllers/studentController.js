@@ -145,19 +145,78 @@ exports.getSchoolFees = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 // 1. Verify Online Payment (Flutterwave)
 exports.verifyPayment = async (req, res) => {
   const { transaction_id, student_id, purpose, program_type } = req.body;
   // 'purpose' can be 'program_fee' or 'cbt_access'
 
   try {
-    // A. Verify with Flutterwave (Mock logic for now, add real FLW call here)
-    // const flwResponse = await verifyFlutterwave(transaction_id); 
-    // if (flwResponse.status !== 'successful') throw new Error("Payment Failed");
-    const amountPaid = 0; // Replace with flwResponse.amount
+    // Security: Verify the request is for the logged-in user's own payment
+    if (req.user.id !== student_id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Unauthorized payment verification attempt' });
+    }
 
-    // B. Handle different payment types
+    // A. Verify with Flutterwave API
+    const FLW_SECRET_KEY = process.env.FLW_SECRET_KEY;
+    if (!FLW_SECRET_KEY) {
+      throw new Error('Payment verification service unavailable');
+    }
+
+    const flwResponse = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${FLW_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const flwData = await flwResponse.json();
+
+    if (flwData.status !== 'success' || flwData.data?.status !== 'successful') {
+      // Log failed attempt
+      await logActivity(student_id, 'PAYMENT_VERIFICATION_FAILED', {
+        req,
+        transaction_id,
+        reason: flwData.message || 'Payment not successful'
+      });
+      return res.status(400).json({
+        error: 'Payment verification failed',
+        details: flwData.message
+      });
+    }
+
+    const amountPaid = flwData.data.amount;
+    const currency = flwData.data.currency;
+
+    // B. Validate payment amount against expected amount
+    const { data: settings } = await supabase.from('system_settings').select('*');
+    const settingsMap = {};
+    settings?.forEach(s => { settingsMap[s.key] = Number(s.value); });
+
+    let expectedAmount = 0;
+    if (purpose === 'program_fee') {
+      if (program_type === 'JAMB') expectedAmount = settingsMap.fee_jamb || 0;
+      else if (program_type === 'A-Level') expectedAmount = settingsMap.fee_alevel || 0;
+      else expectedAmount = settingsMap.fee_olevel || 0;
+    } else if (purpose === 'cbt_access') {
+      expectedAmount = settingsMap.cbt_price || 1500;
+    }
+
+    // Allow 5% tolerance for currency conversion differences
+    if (amountPaid < expectedAmount * 0.95) {
+      await logActivity(student_id, 'PAYMENT_AMOUNT_MISMATCH', {
+        req,
+        expected: expectedAmount,
+        received: amountPaid
+      });
+      return res.status(400).json({
+        error: 'Payment amount mismatch',
+        expected: expectedAmount,
+        received: amountPaid
+      });
+    }
+
+    // C. Handle different payment types
     if (purpose === 'program_fee') {
       // Update specific program status
       await supabase
@@ -166,30 +225,69 @@ exports.verifyPayment = async (req, res) => {
         .eq('student_id', student_id)
         .eq('program_type', program_type);
 
+      // Also update main students table
+      await supabase
+        .from('students')
+        .update({ payment_status: 'paid' })
+        .eq('id', student_id);
+
     } else if (purpose === 'cbt_access') {
-      // Create Subscription
+      // Create Subscription with 3 months validity
+      const expiryDate = new Date();
+      expiryDate.setMonth(expiryDate.getMonth() + 3);
+
       await supabase.from('cbt_subscriptions').insert([{
         student_id,
         amount_paid: amountPaid,
-        plan_type: 'monthly'
+        plan_type: 'quarterly',
+        expiry_date: expiryDate.toISOString()
       }]);
+
+      // Update student record
+      await supabase
+        .from('students')
+        .update({
+          cbt_subscription_active: true,
+          cbt_subscription_expires: expiryDate.toISOString()
+        })
+        .eq('id', student_id);
     }
 
-    // C. Log to Main Payments Table
+    // D. Log to Main Payments Table with full audit trail
     await supabase.from('payments').insert([{
       student_id,
-      amount: amountPaid, // use real amount
+      amount: amountPaid,
       reference: transaction_id,
+      tx_ref: flwData.data.tx_ref,
+      flw_ref: flwData.data.flw_ref,
       status: 'successful',
-      channel: 'flutterwave'
+      channel: 'flutterwave',
+      currency: currency,
+      purpose: purpose,
+      verified_at: new Date().toISOString()
     }]);
 
-    res.json({ success: true, message: "Payment Verified" });
+    // E. Create audit log
+    await logActivity(student_id, 'PAYMENT_VERIFIED', {
+      req,
+      amount: amountPaid,
+      purpose,
+      transaction_id
+    });
+
+    res.json({
+      success: true,
+      message: "Payment Verified Successfully",
+      amount: amountPaid,
+      purpose
+    });
 
   } catch (error) {
+    console.error('Payment verification error:', error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // 2. Submit Manual Payment (Using the NEW transaction_logs table)
 exports.submitManualPayment = async (req, res) => {

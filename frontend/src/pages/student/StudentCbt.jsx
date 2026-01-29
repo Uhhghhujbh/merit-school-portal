@@ -74,33 +74,44 @@ const StudentCbt = () => {
     const startTest = async () => {
         if (config.subjects.length === 0) return alert("Select at least one subject!");
 
-        // Check Subscription (Mock for now, or check user field)
-        // if (!user.cbt_subscription_active) return alert("Please subscribe to access CBT Practice.");
+        // Real Subscription Check
+        if (!subscriptionStatus?.active) {
+            return alert("Please subscribe to access CBT Practice. Your subscription is inactive or expired.");
+        }
 
         setLoading(true);
         try {
+            // Format subjects correctly for backend API
+            // Backend expects: [{name: "Mathematics", count: 10}, ...]
+            const formattedSubjects = config.subjects.map(subjectName => ({
+                name: subjectName,
+                count: Math.ceil(config.count / config.subjects.length) // Distribute count across subjects
+            }));
+
             // Call AI Generation Endpoint
             const res = await api.post('/students/cbt/generate', {
-                subjects: config.subjects,
-                topic: config.topics,
-                difficulty: config.difficulty,
-                count: config.count
+                subjects: formattedSubjects,
+                totalTime: config.time,
+                difficulty: config.difficulty
             }, token);
 
-            if (!res || res.length === 0) throw new Error("No questions generated. Try again.");
+            if (!res || !res.questions || res.questions.length === 0) {
+                throw new Error("No questions generated. Try again.");
+            }
 
-            setQuestions(res);
+            setQuestions(res.questions);
             setTimeLeft(config.time * 60);
             setAnswers({});
             setCurrentQIndex(0);
             setMode('test');
         } catch (err) {
             console.error(err);
-            alert("Failed to generate test. Please try again.");
+            alert(err.message || "Failed to generate test. Please try again.");
         } finally {
             setLoading(false);
         }
     };
+
 
     const submitTest = async () => {
         clearInterval(timerRef.current);

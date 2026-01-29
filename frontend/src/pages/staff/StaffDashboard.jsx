@@ -12,6 +12,7 @@ import LibraryView from '../../components/shared/LibraryView';
 import ReportCard from '../../components/shared/ReportCard';
 import ChatInterface from '../../components/shared/ChatInterface';
 import QuizInterface from '../../components/shared/QuizInterface';
+import StaffENotesView from './StaffENotesView';
 
 const StaffDashboard = () => {
   const { user, token, logout } = useAuthStore();
@@ -221,6 +222,7 @@ const StaffDashboard = () => {
           <TabBtn icon={<Users />} label="My Students" active={activeTab === 'students'} expanded={sidebarOpen} onClick={() => setActiveTab('students')} />
           <TabBtn icon={<Calendar />} label="Timetable" active={activeTab === 'timetable'} expanded={sidebarOpen} onClick={() => setActiveTab('timetable')} />
           <TabBtn icon={<BookOpen />} label="Library" active={activeTab === 'library'} expanded={sidebarOpen} onClick={() => setActiveTab('library')} />
+          <TabBtn icon={<FileText />} label="E-Notes" active={activeTab === 'enotes'} expanded={sidebarOpen} onClick={() => setActiveTab('enotes')} />
           <TabBtn icon={<MessageCircle />} label="Staff Chat" active={activeTab === 'chat'} expanded={sidebarOpen} onClick={() => setActiveTab('chat')} />
           <TabBtn icon={<BrainCircuit />} label="CBT Manager" active={activeTab === 'cbt'} expanded={sidebarOpen} onClick={() => setActiveTab('cbt')} />
           <TabBtn icon={<Bell />} label="Broadcasts" active={activeTab === 'broadcast'} expanded={sidebarOpen} onClick={() => setActiveTab('broadcast')} />
@@ -459,6 +461,13 @@ const StaffDashboard = () => {
         {activeTab === 'library' && (
           <div className="animate-fadeIn">
             <LibraryView user={user} role="staff" isAdmin={false} token={token} />
+          </div>
+        )}
+
+        {/* --- E-NOTES TAB --- */}
+        {activeTab === 'enotes' && (
+          <div className="animate-fadeIn">
+            <StaffENotesView user={user} token={token} />
           </div>
         )}
 

@@ -436,7 +436,33 @@ exports.updateCbtSettings = async (req, res) => {
 };
 
 exports.getQuestionStats = async (req, res) => {
-  // ... existing logic ...
-  res.json({ 'Mathematics': { total: 100, ai: 50, human: 50 } }); // mock for now to be safe on length
+  try {
+    // Get all questions grouped by subject
+    const { data: questions, error } = await supabase
+      .from('cbt_questions')
+      .select('subject, created_by');
+
+    if (error) throw error;
+
+    // Aggregate stats by subject
+    const stats = {};
+    (questions || []).forEach(q => {
+      const subject = q.subject || 'Unknown';
+      if (!stats[subject]) {
+        stats[subject] = { total: 0, ai: 0, human: 0 };
+      }
+      stats[subject].total++;
+      if (q.created_by === 'ai_bulk' || q.created_by === 'ai_live') {
+        stats[subject].ai++;
+      } else {
+        stats[subject].human++;
+      }
+    });
+
+    res.json(stats);
+  } catch (err) {
+    console.error('Question stats error:', err);
+    res.status(500).json({ error: err.message });
+  }
 };
-;
+

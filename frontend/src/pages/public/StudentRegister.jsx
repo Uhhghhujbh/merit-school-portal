@@ -57,9 +57,44 @@ const StudentRegister = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [botField, setBotField] = useState('');
+  const [isDownloaded, setIsDownloaded] = useState(false); // NEW: Track download status
 
   const fileInputRef = useRef(null);
   const printRef = useRef(null); // Reference for the A4 container
+
+  // --- AUTO-SAVE LOGIC (5 Minutes Session) ---
+  useEffect(() => {
+    const savedData = localStorage.getItem('merit_student_reg_data');
+    const savedTime = localStorage.getItem('merit_student_reg_time');
+
+    if (savedData && savedTime) {
+      const now = new Date().getTime();
+      const timeDiff = now - parseInt(savedTime);
+      // 5 minutes = 5 * 60 * 1000 = 300000 ms
+      if (timeDiff < 300000) {
+        try {
+          const parsed = JSON.parse(savedData);
+          setFormData(parsed);
+          // Auto-restore section if valid
+          if (parsed.surname) setActiveSection('personal');
+        } catch (e) {
+          console.error("Auto-save load failed", e);
+        }
+      } else {
+        // Clear expired data
+        localStorage.removeItem('merit_student_reg_data');
+        localStorage.removeItem('merit_student_reg_time');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // Debounce save or save on every change
+    if (formData.surname || formData.email) {
+      localStorage.setItem('merit_student_reg_data', JSON.stringify(formData));
+      localStorage.setItem('merit_student_reg_time', new Date().getTime().toString());
+    }
+  }, [formData]);
 
   const [formData, setFormData] = useState({
     surname: '', middleName: '', lastName: '',
@@ -256,6 +291,11 @@ const StudentRegister = () => {
     if (!formData.termsAccepted) return alert("Please accept terms and conditions");
     if (!formData.signature) return alert("Please provide your digital signature");
 
+    // NEW: Enforce Download
+    if (!isDownloaded) {
+      return alert("ACTION REQUIRED: You must Download/Print your form (PDF or JPG) before submitting.");
+    }
+
     if (passwordScore < 2) {
       return alert("Password is too weak! Please add numbers, uppercase letters, or use more characters.");
     }
@@ -290,6 +330,7 @@ const StudentRegister = () => {
       link.href = image;
       link.download = `${formData.surname}_Registration_Form.jpg`;
       link.click();
+      setIsDownloaded(true); // Mark as downloaded
     } catch (err) {
       alert("Error generating image. Please try again.");
     }
@@ -306,6 +347,7 @@ const StudentRegister = () => {
 
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${formData.surname}_Registration_Form.pdf`);
+      setIsDownloaded(true); // Mark as downloaded
     } catch (err) {
       alert("Error generating PDF. Please try again.");
     }
@@ -318,7 +360,7 @@ const StudentRegister = () => {
         <div className="bg-blue-900 px-8 py-8 text-white text-center">
           <img src="/meritlogo.jpg" alt="MCAS" className="w-20 h-20 rounded-full bg-white p-1 shadow-lg mx-auto mb-4 object-contain" />
           <h1 className="text-3xl font-black tracking-tight">STUDENT REGISTRATION</h1>
-          <p className="text-blue-200 text-sm font-medium mt-1">Merit College of Advanced Studies • 2025/2026</p>
+          <p className="text-blue-200 text-sm font-medium mt-1">Merit College of Advanced Studies • 2025/2026 • Est. 2019</p>
         </div>
 
         <div className="border-t border-slate-200">

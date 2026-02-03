@@ -41,7 +41,8 @@ const StudentChat = () => {
   const { user, token } = useAuthStore();
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isPaid, setIsPaid] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -64,10 +65,15 @@ const StudentChat = () => {
 
   // Initial Load & Polling
   useEffect(() => {
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 5000); // Poll every 5s
-    return () => clearInterval(interval);
-  }, []);
+    if (user?.payment_status === 'paid' || user?.payment_status === 'partial') {
+      setIsPaid(true);
+      fetchMessages();
+      const interval = setInterval(fetchMessages, 5000); // Poll every 5s
+      return () => clearInterval(interval);
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     scrollToBottom();
@@ -94,6 +100,8 @@ const StudentChat = () => {
       setError(null);
     } catch (err) {
       console.error("Chat Error:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -219,8 +227,44 @@ const StudentChat = () => {
 
   const isButtonDisabled = (!inputText.trim() && !imageBase64) || sending || isRateLimited;
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
+        <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+        <p className="text-slate-500 font-bold">Connecting to Community...</p>
+      </div>
+    );
+  }
+
+  if (!isPaid) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-20 h-20 bg-green-100 rounded-3xl flex items-center justify-center text-green-600 mb-6 animate-bounce">
+          <MessageCircle size={40} />
+        </div>
+        <h2 className="text-3xl font-black text-slate-900 mb-2">Chat Locked</h2>
+        <p className="text-slate-600 max-w-sm mb-8">
+          The student community chat is exclusive to students who have completed their payments.
+        </p>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm max-w-sm w-full">
+          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Required Payment</p>
+          <div className="flex justify-between items-center mb-6">
+            <span className="text-slate-700 font-medium">Registration Fee</span>
+            <span className="text-2xl font-black text-slate-900">₦15,000+</span>
+          </div>
+          <button
+            onClick={() => window.location.href = '/student/payments'}
+            className="w-full py-4 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 hover:bg-green-700 transition-all"
+          >
+            Go to Payments
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* HEADER */}
       <header className="bg-white p-4 shadow-sm border-b border-slate-200 flex justify-between items-center fixed top-0 w-full z-10">
         <div className="flex items-center gap-3">
@@ -228,36 +272,51 @@ const StudentChat = () => {
             <MessageCircle size={24} />
           </div>
           <div>
-            <h1 className="font-bold text-slate-800 text-lg">Student Community</h1>
-            <p className="text-xs text-slate-500 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online
+            <h1 className="font-black text-slate-900 text-lg">Student Community</h1>
+            <p className="text-xs text-slate-500 flex items-center gap-1 font-bold">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> {messages.length > 0 ? messages.length + ' messages' : 'Stay connected'}
             </p>
           </div>
         </div>
-        <button onClick={fetchMessages} className="p-2 text-slate-400 hover:bg-slate-50 rounded-full"><RefreshCw size={20} /></button>
+        <button onClick={fetchMessages} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"><RefreshCw size={20} /></button>
       </header>
 
       {/* MESSAGES AREA */}
-      <main className="flex-1 mt-20 mb-24 p-4 space-y-4 overflow-y-auto">
-        <div className="text-center text-xs text-slate-400 py-4">
-          Messages are monitored by Administration. Be respectful.
+      <main className="flex-1 mt-20 mb-24 p-4 space-y-6 overflow-y-auto bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
+        <div className="text-center">
+          <span className="bg-white/80 backdrop-blur-sm px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-400 border border-slate-100">
+            End-to-end Encrypted
+          </span>
         </div>
+
         {messages.map((msg, idx) => {
           const isMe = msg.sender_id === user?.id;
           const name = msg.sender_name || 'Unknown';
           const isEditing = editingMessageId === msg.id;
 
           return (
-            <div key={msg.id || idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] md:max-w-[60%] rounded-2xl p-4 shadow-sm ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+            <div key={msg.id || idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2`}>
+              {!isMe && (
+                <div className="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0 mb-1 overflow-hidden border-2 border-white shadow-sm">
+                  {msg.sender_photo ? (
+                    <img src={msg.sender_photo} alt={name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-blue-100 text-blue-600 text-xs font-bold">
+                      {name.charAt(0)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className={`max-w-[85%] md:max-w-[70%] rounded-2xl p-3 shadow-md ${isMe
+                ? 'bg-blue-600 text-white rounded-br-none'
+                : 'bg-white text-slate-800 border border-slate-100 rounded-bl-none'
                 }`}>
+
                 {!isMe && (
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-                      {msg.sender_role === 'admin' ? <Shield size={10} className="text-red-500" /> : <User size={10} />}
-                      {name}
-                    </span>
-                  </div>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-tighter mb-1">
+                    {msg.sender_role === 'admin' ? 'Admin Staff' : name}
+                  </p>
                 )}
 
                 {/* Image Display */}

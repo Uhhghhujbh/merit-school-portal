@@ -5,12 +5,12 @@ exports.getMessages = async (req, res) => {
     try {
         const { limit = 50 } = req.query;
 
-        // Fetch messages with proper joins to get student names
+        // Fetch messages with proper joins to get student names and photos
         const { data, error } = await supabase
             .from('chat_messages')
             .select(`
                 *,
-                students:sender_id (first_name, middle_name, surname)
+                students:sender_id (first_name, middle_name, surname, photo_url)
             `)
             .eq('is_deleted', false)
             .order('created_at', { ascending: false })
@@ -21,9 +21,12 @@ exports.getMessages = async (req, res) => {
         // Enhance sender names with actual student data
         const enhancedMessages = data.map(msg => {
             if (msg.sender_role === 'student' && msg.students) {
-                // Use first_name or middle_name, not surname
-                const displayName = msg.students.first_name || msg.students.middle_name || 'Student';
-                return { ...msg, sender_name: displayName };
+                const displayName = `${msg.students.first_name || ''} ${msg.students.surname || ''}`.trim() || 'Student';
+                return {
+                    ...msg,
+                    sender_name: displayName,
+                    sender_photo: msg.students.photo_url
+                };
             }
             return msg;
         });
@@ -44,16 +47,25 @@ exports.sendMessage = async (req, res) => {
     }
 
     try {
-        // Get user name based on role
+        // Get user name and photo based on role
         let senderName = 'User';
+        let senderPhoto = null;
+
         if (req.role === 'student') {
-            senderName = `${req.user.surname || ''} ${req.user.first_name || ''}`.trim() || 'Student';
+            const { data: student } = await supabase
+                .from('students')
+                .select('first_name, surname, photo_url')
+                .eq('id', req.user.id)
+                .single();
+
+            if (student) {
+                senderName = `${student.first_name || ''} ${student.surname || ''}`.trim() || 'Student';
+                senderPhoto = student.photo_url;
+            }
         } else if (req.role === 'staff') {
-            senderName = req.user.staff_name || req.user.email || 'Staff';
+            senderName = req.staff?.full_name || 'Staff';
         } else if (req.role === 'admin') {
             senderName = 'Admin';
-        } else if (req.role === 'parent') {
-            senderName = req.user.parent_name || 'Parent';
         }
 
         let imageUrl = null;

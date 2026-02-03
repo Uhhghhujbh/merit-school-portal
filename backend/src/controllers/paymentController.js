@@ -44,7 +44,7 @@ exports.initializePayment = async (req, res) => {
             created_at: new Date().toISOString()
         }]);
 
-        // Flutterwave payment data
+        // Flutterwave payment data (v3)
         const paymentData = {
             public_key: FLW_PUBLIC_KEY,
             tx_ref: txRef,
@@ -53,13 +53,12 @@ exports.initializePayment = async (req, res) => {
             payment_options: 'card,banktransfer,ussd',
             customer: {
                 email: student.email,
-                phone_number: student.phone_number || '',
+                phonenumber: student.phone_number || '', // Flutterwave uses phonenumber (no underscore) in some v3 contexts
                 name: `${student.first_name} ${student.surname}`
             },
             customizations: {
                 title: 'Merit School Portal',
                 description: type === 'cbt' ? 'CBT Subscription (3 months)' : 'Quiz Limit Unlock',
-                logo: 'https://your-logo-url.com/logo.png'
             },
             redirect_url: `${FRONTEND_URL}/payment/callback?type=${type}`
         };

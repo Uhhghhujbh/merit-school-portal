@@ -127,7 +127,7 @@ const AdminDashboard = () => {
       setStats(statsData);
       setFees(settingsData || []);
       setActivityLogs(logsData || []);
-      setBroadcastList(msgsData || []);
+      setBroadcastList(msgsData?.announcements || []);
       setStaffList(staffData || []); // SET STAFF DATA
 
     } catch (err) {

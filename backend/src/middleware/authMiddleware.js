@@ -63,7 +63,7 @@ const verifyAdmin = async (req, res, next) => {
       return res.status(403).json({ error: 'Access Denied: Not an Administrator.' });
     }
 
-    req.user = user;
+    req.user = { ...user, role: 'admin' };
     req.role = 'admin';
     next();
 
@@ -93,14 +93,14 @@ const verifyStaff = async (req, res, next) => {
     const { data: staffProfile } = await supabase.from('staff').select('*').eq('id', user.id).maybeSingle();
 
     if (adminEntry) {
-      req.user = user;
+      req.user = { ...user, role: 'admin' };
       req.role = 'admin';
       if (staffProfile) req.staff = staffProfile;
       return next();
     }
 
     if (staffProfile) {
-      req.user = user;
+      req.user = { ...user, role: 'staff' };
       req.role = 'staff';
       req.staff = staffProfile;
       return next();
@@ -126,7 +126,7 @@ const verifyStudent = async (req, res, next) => {
     if (error || !user) return res.status(401).json({ error: 'Invalid token' });
 
     // Attach user to request so Controller can read 'req.user.id'
-    req.user = user;
+    req.user = { ...user, role: 'student' };
     req.role = 'student';
     next();
 
@@ -151,14 +151,14 @@ const verifyAny = async (req, res, next) => {
 
     // 1. Check Admin
     const { data: admin } = await supabase.from('admin_allowlist').select('email').ilike('email', email).maybeSingle();
-    if (admin) { req.user = user; req.role = 'admin'; return next(); }
+    if (admin) { req.user = { ...user, role: 'admin' }; req.role = 'admin'; return next(); }
 
     // 2. Check Staff
     const { data: staff } = await supabase.from('staff').select('*').eq('id', user.id).maybeSingle();
-    if (staff) { req.user = user; req.role = 'staff'; return next(); }
+    if (staff) { req.user = { ...user, role: 'staff' }; req.role = 'staff'; return next(); }
 
     // 3. Fallback to Student
-    req.user = user;
+    req.user = { ...user, role: 'student' };
     req.role = 'student';
     next();
 

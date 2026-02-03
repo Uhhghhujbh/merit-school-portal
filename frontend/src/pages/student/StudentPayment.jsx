@@ -30,7 +30,7 @@ const StudentPayment = () => {
         payment_options: 'card,ussd,banktransfer',
         customer: {
             email: user?.email,
-            phone_number: user?.phone_number,
+            phonenumber: user?.phone_number,
             name: `${user?.surname} ${user?.first_name}`,
         },
         customizations: {

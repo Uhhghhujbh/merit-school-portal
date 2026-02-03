@@ -8,13 +8,20 @@ const StudentENotes = () => {
     const [notes, setNotes] = useState([]);
     const [subjects, setSubjects] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isPaid, setIsPaid] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
+        const checkPayment = async () => {
+            if (user?.payment_status === 'paid' || user?.payment_status === 'partial') {
+                setIsPaid(true);
+            }
+        };
+        checkPayment();
         fetchNotes();
         fetchSubjects();
-    }, [selectedSubject]);
+    }, [selectedSubject, user]);
 
     const fetchNotes = async () => {
         try {
@@ -62,114 +69,142 @@ const StudentENotes = () => {
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     };
 
+    if (!isPaid) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-20 h-20 bg-blue-100 rounded-3xl flex items-center justify-center text-blue-600 mb-6 animate-bounce">
+                    <Lock size={40} />
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 mb-2">Feature Locked</h2>
+                <p className="text-slate-600 max-w-sm mb-8">
+                    Access to E-Notes is restricted to students who have completed their registration payments.
+                </p>
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm max-w-sm w-full">
+                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Required Payment</p>
+                    <div className="flex justify-between items-center mb-6">
+                        <span className="text-slate-700 font-medium">Registration Fee</span>
+                        <span className="text-2xl font-black text-slate-900">₦15,000+</span>
+                    </div>
+                    <button
+                        onClick={() => window.location.href = '/student/payments'}
+                        className="w-full py-4 bg-blue-900 text-white rounded-xl font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-800 transition-all"
+                    >
+                        Go to Payments
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
             {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                    <BookOpen className="text-blue-700" size={28} />
-                    E-Notes
-                </h1>
-                <p className="text-gray-600 text-sm mt-1">
-                    Download study notes and materials for your subjects
-                </p>
+            <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-black text-slate-900 flex items-center gap-2">
+                        <BookOpen className="text-blue-700" size={32} />
+                        E-Notes
+                    </h1>
+                    <p className="text-slate-500 font-medium mt-1">
+                        Download high-quality study materials
+                    </p>
+                </div>
+                <div className="bg-blue-100 px-4 py-2 rounded-full text-blue-700 text-sm font-bold">
+                    {filteredNotes.length} Materials Available
+                </div>
             </div>
 
             {/* Filters */}
-            <div className="bg-white p-4 rounded border border-gray-200 mb-6">
-                <div className="flex flex-col md:flex-row gap-4">
+            <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm mb-8">
+                <div className="flex flex-col md:flex-row gap-2">
                     {/* Search */}
                     <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                         <input
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search notes..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded focus:border-blue-500 outline-none"
+                            placeholder="Search by topic or subject..."
+                            className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium"
                         />
                     </div>
 
                     {/* Subject Filter */}
                     <div className="relative">
-                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                         <select
                             value={selectedSubject}
                             onChange={(e) => setSelectedSubject(e.target.value)}
-                            className="pl-10 pr-8 py-2 border border-gray-200 rounded focus:border-blue-500 outline-none appearance-none bg-white min-w-[180px]"
+                            className="pl-12 pr-10 py-4 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 outline-none appearance-none font-bold text-slate-700 min-w-[200px]"
                         >
                             <option value="">All Subjects</option>
                             {subjects.map(sub => (
                                 <option key={sub.name} value={sub.name}>
-                                    {sub.name} ({sub.count})
+                                    {sub.name}
                                 </option>
                             ))}
                         </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
                     </div>
                 </div>
             </div>
 
             {/* Notes List */}
             {loading ? (
-                <div className="flex justify-center py-12">
-                    <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
+                <div className="flex flex-col items-center justify-center py-24">
+                    <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+                    <p className="text-slate-500 font-bold">Loading Materials...</p>
                 </div>
             ) : filteredNotes.length === 0 ? (
-                <div className="bg-white p-12 rounded border border-gray-200 text-center">
-                    <FileText className="mx-auto text-gray-300 mb-4" size={48} />
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">No Notes Found</h3>
-                    <p className="text-gray-500 text-sm">
-                        {selectedSubject ? `No notes available for ${selectedSubject}` : 'Check back later for study materials'}
+                <div className="bg-white p-16 rounded-3xl border border-slate-200 text-center shadow-sm">
+                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
+                        <FileText size={40} />
+                    </div>
+                    <h3 className="text-2xl font-black text-slate-800 mb-2">No Results Found</h3>
+                    <p className="text-slate-500 font-medium max-w-xs mx-auto">
+                        We couldn't find any materials matching "{searchQuery}". Try a different search term.
                     </p>
                 </div>
             ) : (
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredNotes.map(note => (
                         <div
                             key={note.id}
-                            className="bg-white p-4 rounded border border-gray-200 hover:border-blue-300 transition flex items-start gap-4"
+                            className="group bg-white p-6 rounded-3xl border border-slate-200 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 flex flex-col h-full"
                         >
-                            {/* Icon */}
-                            <div className="w-12 h-12 bg-blue-50 rounded flex items-center justify-center shrink-0">
-                                <FileText className="text-blue-700" size={24} />
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                                <h3 className="font-medium text-gray-900 truncate">{note.title}</h3>
-                                <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
-                                    <span className="bg-gray-100 px-2 py-0.5 rounded text-xs font-medium">
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="w-14 h-14 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <FileText className="text-blue-700" size={28} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 px-2 py-1 bg-blue-50 rounded-lg">
                                         {note.subject}
                                     </span>
-                                    {note.class_level && note.class_level !== 'All' && (
-                                        <span className="text-xs">{note.class_level}</span>
-                                    )}
-                                    <span className="text-xs">{formatFileSize(note.file_size)}</span>
-                                    <span className="text-xs">{note.downloads || 0} downloads</span>
+                                    <h3 className="font-bold text-slate-900 mt-1 truncate">{note.title}</h3>
                                 </div>
-                                {note.description && (
-                                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">{note.description}</p>
-                                )}
                             </div>
 
-                            {/* Download Button */}
-                            <button
-                                onClick={() => handleDownload(note)}
-                                className="px-4 py-2 bg-blue-700 text-white rounded font-medium text-sm hover:bg-blue-800 flex items-center gap-2 shrink-0"
-                            >
-                                <Download size={16} />
-                                Download
-                            </button>
+                            {note.description && (
+                                <p className="text-sm text-slate-500 line-clamp-2 mb-6 flex-1 leading-relaxed">
+                                    {note.description}
+                                </p>
+                            )}
+
+                            <div className="flex items-center justify-between pt-4 border-t border-slate-50 mt-auto">
+                                <div className="flex flex-col">
+                                    <span className="text-xs text-slate-400 font-bold">Size: {formatFileSize(note.file_size)}</span>
+                                    <span className="text-xs text-slate-400 font-bold">Downloads: {note.downloads || 0}</span>
+                                </div>
+                                <button
+                                    onClick={() => handleDownload(note)}
+                                    className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+                                    title="Download Material"
+                                >
+                                    <Download size={20} />
+                                </button>
+                            </div>
                         </div>
                     ))}
-                </div>
-            )}
-
-            {/* Stats */}
-            {!loading && filteredNotes.length > 0 && (
-                <div className="mt-6 text-center text-sm text-gray-500">
-                    Showing {filteredNotes.length} of {notes.length} notes
                 </div>
             )}
         </div>

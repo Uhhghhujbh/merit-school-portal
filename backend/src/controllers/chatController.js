@@ -20,12 +20,12 @@ exports.getMessages = async (req, res) => {
 
         // Enhance sender names with actual student data
         const enhancedMessages = data.map(msg => {
-            if (msg.sender_role === 'student' && msg.students) {
-                const displayName = `${msg.students.first_name || ''} ${msg.students.surname || ''}`.trim() || 'Student';
+            if (msg.sender_role === 'student') {
+                const displayName = (msg.students && `${msg.students.first_name || ''} ${msg.students.surname || ''}`.trim()) || msg.sender_name || 'Student';
                 return {
                     ...msg,
                     sender_name: displayName,
-                    sender_photo: msg.students.photo_url
+                    sender_photo: msg.students?.photo_url || null
                 };
             }
             return msg;

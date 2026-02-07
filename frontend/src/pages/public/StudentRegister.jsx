@@ -8,6 +8,7 @@ import {
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { api } from '../../lib/api';
+import { getCurrentSession } from '../../lib/sessionUtils';
 
 // --- COMPONENTS ---
 import FormPreview from '../../components/FormPreview';
@@ -363,7 +364,7 @@ const StudentRegister = () => {
         <div className="bg-blue-900 px-8 py-8 text-white text-center">
           <img src="/meritlogo.jpg" alt="MCAS" className="w-20 h-20 rounded-full bg-white p-1 shadow-lg mx-auto mb-4 object-contain" />
           <h1 className="text-3xl font-black tracking-tight">STUDENT REGISTRATION</h1>
-          <p className="text-blue-200 text-sm font-medium mt-1">Merit College of Advanced Studies • 2025/2026 • Est. 2019</p>
+          <p className="text-blue-200 text-sm font-medium mt-1">Merit College of Advanced Studies • {getCurrentSession()} • Est. 2019</p>
         </div>
 
         <div className="border-t border-slate-200">

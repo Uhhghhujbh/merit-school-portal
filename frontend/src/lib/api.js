@@ -65,27 +65,45 @@ export const api = {
     try {
       const response = await fetch(`${API_URL}${endpoint}`, config);
 
-      // Handle 401 Unauthorized - auto logout
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.warn('Failed to parse error response as JSON');
+      }
+
+      const serverError = data.error || data.message;
+      const isLoginRoute = endpoint.includes('/login');
+
+      // Handle 401 Unauthorized
       if (response.status === 401) {
+        if (isLoginRoute) {
+          throw new Error(serverError || 'Invalid credentials. Please check your email and password.');
+        }
         console.warn('Session expired or invalid token');
         handleUnauthorized();
-        throw new Error('Session expired. Please log in again.');
+        throw new Error(serverError || 'Session expired. Please log in again.');
       }
 
       // Handle 403 Forbidden
       if (response.status === 403) {
-        throw new Error('Access denied. You do not have permission to perform this action.');
+        if (isLoginRoute) {
+          throw new Error(serverError || 'Access Denied: You do not have permission to access this area.');
+        }
+        throw new Error(serverError || 'Access denied. You do not have permission to perform this action.');
       }
 
-      // Handle 429 Too Many Requests (Rate Limited)
+      // Handle 429 Too Many Requests
       if (response.status === 429) {
-        throw new Error('Too many requests. Please slow down and try again later.');
+        throw new Error(serverError || 'Too many requests. Please slow down and try again later.');
       }
-
-      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Something went wrong');
+        // For 500 errors, prefer the server message if it looks like a suspension message
+        if (response.status === 500 && serverError?.toLowerCase().includes('suspended')) {
+          throw new Error(serverError);
+        }
+        throw new Error(serverError || `Server Error (${response.status})`);
       }
 
       return data;

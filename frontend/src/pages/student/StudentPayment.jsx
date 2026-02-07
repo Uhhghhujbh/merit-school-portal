@@ -92,39 +92,58 @@ const StudentPayment = () => {
                     </div>
 
                     {error && (
-                        <div className="mb-6 bg-red-50 text-red-600 text-xs font-bold p-3 rounded-lg border border-red-100 text-center">
-                            {error}
+                        <div className="mb-6 bg-red-50 text-red-600 text-xs font-bold p-4 rounded-xl border border-red-100 text-center flex flex-col gap-2">
+                            <div className="flex items-center justify-center gap-2">
+                                <AlertTriangle size={16} />
+                                <span>Payment Error</span>
+                            </div>
+                            <p>{error}</p>
+                            <button
+                                onClick={() => setError(null)}
+                                className="text-blue-600 hover:underline mt-1"
+                            >
+                                Try Again
+                            </button>
                         </div>
                     )}
 
                     {verifying ? (
-                        <div className="text-center py-8">
+                        <div className="text-center py-8 bg-blue-50 rounded-2xl border border-blue-100 animate-pulse">
                             <Loader2 className="animate-spin text-blue-600 mx-auto mb-3" size={32} />
-                            <p className="text-slate-600 font-medium">Verifying Transaction...</p>
-                            <p className="text-xs text-slate-400 mt-1">Please do not close this window.</p>
+                            <p className="text-blue-900 font-bold uppercase tracking-wider text-xs">Verifying Transaction...</p>
+                            <p className="text-[10px] text-blue-500 mt-1">Please do not refresh or close this page.</p>
                         </div>
                     ) : (
                         <button
                             onClick={() => {
-                                handleFlutterwavePayment({
-                                    callback: (response) => {
-                                        console.log(response);
-                                        if (response.status === "successful" || response.status === "completed") {
-                                            verifyPayment(response);
-                                        } else {
-                                            closePaymentModal();
-                                            alert("Payment Cancelled or Failed");
-                                        }
-                                    },
-                                    onClose: () => {
-                                        // Do nothing or alert
-                                    },
-                                });
+                                setError(null);
+                                if (!config.public_key || config.public_key.includes('DEMO-KEY')) {
+                                    return setError("Merchant Payment Key is missing or invalid. Please contact administrator.");
+                                }
+
+                                try {
+                                    handleFlutterwavePayment({
+                                        callback: (response) => {
+                                            if (response.status === "successful" || response.status === "completed") {
+                                                verifyPayment(response);
+                                            } else {
+                                                closePaymentModal();
+                                                setError("Payment was not successful. Please try again.");
+                                            }
+                                        },
+                                        onClose: () => {
+                                            setLoading(false);
+                                        },
+                                    });
+                                } catch (err) {
+                                    setError("Failed to initialize payment gateway: " + err.message);
+                                }
                             }}
-                            className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-green-900/10 transition-all flex items-center justify-center gap-3"
+                            disabled={loading}
+                            className="w-full bg-blue-900 hover:bg-blue-800 text-white py-5 rounded-xl font-bold shadow-xl shadow-blue-900/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
                         >
-                            <CreditCard size={20} />
-                            Pay Now
+                            {loading ? <Loader2 className="animate-spin" size={20} /> : <CreditCard size={20} />}
+                            {loading ? 'Processing...' : 'Pay Securely Now'}
                         </button>
                     )}
 

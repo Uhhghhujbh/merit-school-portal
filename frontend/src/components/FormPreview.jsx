@@ -1,31 +1,32 @@
 import React from 'react';
+import { getCurrentSession } from '../lib/sessionUtils';
 
 // Print-optimized Form Preview - Designed to fit on a single A4 page
 const FormPreview = ({ formData }) => (
   <div
-    className="text-xs leading-tight text-black bg-white"
+    className="text-xs leading-tight text-black bg-white mx-auto shadow-none"
     style={{
-      fontFamily: 'Times New Roman, serif',
+      fontFamily: 'Inter, system-ui, sans-serif',
       width: '210mm',
-      minHeight: '270mm',
-      maxHeight: '297mm',
-      padding: '10mm',
-      boxSizing: 'border-box'
+      minHeight: '297mm',
+      padding: '15mm 12mm',
+      boxSizing: 'border-box',
+      backgroundColor: 'white'
     }}
   >
     {/* Header - Matching AdmissionLetter format */}
-    <div className="flex items-center gap-3 border-b-2 border-blue-900 pb-3 mb-4">
-      <img src="/meritlogo.jpg" alt="Merit College" className="w-16 h-16 object-contain" />
+    <div className="flex items-center gap-4 border-b-2 border-blue-900 pb-4 mb-5">
+      <img src="/meritlogo.jpg" alt="Merit College" className="w-20 h-20 object-contain" />
       <div className="text-center flex-1">
-        <h1 className="text-2xl font-bold text-blue-900 uppercase tracking-wide">Merit College</h1>
-        <h2 className="text-base font-bold text-slate-700 uppercase tracking-widest">Of Advanced Studies</h2>
-        <p className="text-[9px] font-bold mt-1 text-slate-500">KNOWLEDGE FOR ADVANCEMENT</p>
-        <p className="text-[8px] text-slate-500">32, Ansarul Ogidi, beside Conoil Filling Station, Ilorin, Kwara State. | Tel: +234 816 698 5866</p>
+        <h1 className="text-3xl font-black text-blue-900 uppercase tracking-tight leading-none">Merit College</h1>
+        <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest mt-1">Of Advanced Studies</h2>
+        <p className="text-[10px] font-black mt-2 text-slate-600 tracking-[0.2em]">KNOWLEDGE FOR ADVANCEMENT</p>
+        <p className="text-[9px] text-slate-500 mt-1">32, Ansarul Ogidi, beside Conoil Filling Station, Ilorin, Kwara State. | Tel: +234 816 698 5866</p>
       </div>
     </div>
 
-    <h2 className="text-center font-bold text-sm underline mb-3 uppercase">
-      Student Registration Form ({new Date().getFullYear()}/{new Date().getFullYear() + 1})
+    <h2 className="text-center font-black text-base underline mb-4 uppercase tracking-wider">
+      Student Registration Form ({getCurrentSession()})
     </h2>
 
     {/* Section A: Personal Bio-Data */}

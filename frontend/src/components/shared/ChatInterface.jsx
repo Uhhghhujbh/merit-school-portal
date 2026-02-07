@@ -66,7 +66,7 @@ const ChatInterface = ({ user, token, role }) => {
 
     useEffect(() => {
         fetchMessages();
-        const interval = setInterval(fetchMessages, 5000); // Poll every 5s
+        const interval = setInterval(fetchMessages, 3000); // Poll every 3s
         return () => clearInterval(interval);
     }, []);
 
@@ -360,8 +360,8 @@ const ChatInterface = ({ user, token, role }) => {
                     disabled={isButtonDisabled}
                     type="submit"
                     className={`p-3 text-white rounded-full transition ${isRateLimited
-                            ? 'bg-slate-400 cursor-not-allowed'
-                            : 'bg-purple-600 hover:bg-purple-700'
+                        ? 'bg-slate-400 cursor-not-allowed'
+                        : 'bg-purple-600 hover:bg-purple-700'
                         } disabled:opacity-50`}
                     title={isRateLimited ? 'Please wait before sending another message' : 'Send message'}
                 >

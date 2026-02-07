@@ -38,8 +38,8 @@ const recordFailedLogin = async (email) => {
         email: email.toLowerCase(),
         attempts,
         last_attempt: new Date().toISOString(),
-        suspended_until: attempts >= 5
-            ? new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() // 2 hours
+        suspended_until: attempts >= 10
+            ? new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes
             : null,
         updated_at: new Date().toISOString()
     };
@@ -48,8 +48,8 @@ const recordFailedLogin = async (email) => {
         .from('login_attempts')
         .upsert(suspensionData, { onConflict: 'email' });
 
-    if (attempts >= 5) {
-        throw new Error('Account suspended for 2 hours due to multiple failed login attempts.');
+    if (attempts >= 10) {
+        throw new Error('Account suspended for 30 minutes due to multiple failed login attempts.');
     }
 
     return attempts;
